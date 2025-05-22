@@ -1,0 +1,9 @@
+[submodule "kdl2"]
+path = kdl2
+url = https://github.com/kdl-org/kdl.git
+
+[submodule "kdl1"]
+path = kdl1
+url = https://github.com/kdl-org/kdl.git
+branch = release/v1
+update = none

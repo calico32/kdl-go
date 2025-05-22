@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://json.schemastore.org/clang-format
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 80
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Empty
+BinPackArguments: true
