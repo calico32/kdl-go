@@ -12,9 +12,9 @@ import (
 
 //export kdlgo_read
 func kdlgo_read(ptr unsafe.Pointer, buf *C.char, size C.size_t) C.size_t {
-	parser := (*cgo.Handle)(ptr).Value().(*Parser)
+	impl := (*cgo.Handle)(ptr).Value().(parserImpl)
 	slice := unsafe.Slice((*uint8)(unsafe.Pointer(buf)), size)
-	n, err := parser.r.Read(slice)
+	n, err := impl.r.Read(slice)
 	if err != nil {
 		return 0
 	}
@@ -23,9 +23,9 @@ func kdlgo_read(ptr unsafe.Pointer, buf *C.char, size C.size_t) C.size_t {
 
 //export kdlgo_write
 func kdlgo_write(ptr unsafe.Pointer, buf C.kdlgo_char_const_ptr, size C.size_t) C.size_t {
-	emitter := (*cgo.Handle)(ptr).Value().(*Emitter)
+	impl := (*cgo.Handle)(ptr).Value().(emitterImpl)
 	slice := unsafe.Slice((*uint8)(unsafe.Pointer(buf)), size)
-	n, err := emitter.w.Write(slice)
+	n, err := impl.w.Write(slice)
 	if err != nil {
 		return 0
 	}
