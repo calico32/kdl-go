@@ -5,12 +5,14 @@ import (
 	"strings"
 )
 
+// A Printer formats a KDL document as an S-expression.
 type Printer struct {
 	builder     strings.Builder
 	indent      int
 	atLineStart bool
 }
 
+// PrintDocument formats the given KDL document as an S-expression.
 func PrintDocument(doc *Document) string {
 	p := NewPrinter()
 	p.PrintDocument(doc)
@@ -55,6 +57,10 @@ func (p *Printer) PrintDocument(doc *Document) {
 }
 
 func (p *Printer) PrintNode(node *Node) {
+	if node == nil {
+		p.print("\n(node nil)")
+		return
+	}
 	p.printf("\n(node \"%s\"", node.Name)
 	p.indent++
 	if node.TypeAnnotation != nil {

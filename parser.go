@@ -138,7 +138,7 @@ func (d *Parser) ParseDocument() (*Document, error) {
 
 	for {
 		if d.ev.Type == C.KDL_EVENT_START_NODE {
-			n, err := d.nextNode()
+			n, err := d.nextNode(nil)
 			if err != nil {
 				return nil, err
 			}
@@ -160,7 +160,7 @@ func (d *Parser) ParseDocument() (*Document, error) {
 // nextNode parses and returns the next complete node from the underlying
 // reader, or an error if the node is invalid or if there is an error reading
 // from the reader.
-func (d *Parser) nextNode() (*Node, error) {
+func (d *Parser) nextNode(parent *Node) (*Node, error) {
 	start, err := d.accept(C.KDL_EVENT_START_NODE)
 	if err != nil {
 		return nil, err
@@ -171,11 +171,12 @@ func (d *Parser) nextNode() (*Node, error) {
 		Arguments:     []Value{},
 		Properties:    map[string]Value{},
 		PropertyOrder: []string{},
+		Parent:        parent,
 	}
 
 	switch s := start.Value.(type) {
 	case Null:
-		node.TypeAnnotation = s.typeAnnot
+		node.TypeAnnotation = s.typeAnnotation
 	default:
 		return nil, errors.New("invalid type annotation")
 	}
@@ -210,7 +211,7 @@ func (d *Parser) nextNode() (*Node, error) {
 	// accept children
 	for {
 		if d.ev.Type == C.KDL_EVENT_START_NODE {
-			n, err := d.nextNode()
+			n, err := d.nextNode(node)
 			if err != nil {
 				return nil, err
 			}
@@ -248,7 +249,7 @@ func (p *Parser) next() (*kdlEvent, error) {
 		return nil, errors.New("ckdl parse error")
 	}
 
-	name := GoString(&ev.name)
+	name := goString(&ev.name)
 	v, err := newKdlValue(ev.value)
 	if err != nil {
 		return nil, err

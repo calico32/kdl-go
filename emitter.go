@@ -98,7 +98,7 @@ func (e *Emitter) EmitDocument(doc *Document) error {
 }
 
 func (e *Emitter) emitNode(node *Node) error {
-	name, free := KdlString(node.Name)
+	name, free := kdlString(node.Name)
 	defer free()
 
 	if node.TypeAnnotation == nil {
@@ -106,7 +106,7 @@ func (e *Emitter) emitNode(node *Node) error {
 			return errors.New("failed to emit node start")
 		}
 	} else {
-		annot, free := KdlString(*node.TypeAnnotation)
+		annot, free := kdlString(*node.TypeAnnotation)
 		defer free()
 		if ok := C.kdl_emit_node_with_type(e.c, annot, name); !ok {
 			return errors.New("failed to emit node start with type")
@@ -125,7 +125,7 @@ func (e *Emitter) emitNode(node *Node) error {
 	for _, k := range node.PropertyOrder {
 		v := node.Properties[k]
 
-		key, free := KdlString(k)
+		key, free := kdlString(k)
 		defer free()
 		value, free := v.c()
 		defer free()
@@ -135,7 +135,7 @@ func (e *Emitter) emitNode(node *Node) error {
 		}
 	}
 
-	if len(node.Children) > 0 {
+	if len(node.Children) > 0 || node.Hints.EmitEmptyChildren {
 		if ok := C.kdl_start_emitting_children(e.c); !ok {
 			return errors.New("failed to emit children")
 		}
