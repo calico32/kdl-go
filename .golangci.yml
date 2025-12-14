@@ -1,0 +1,10 @@
+version: '2'
+
+linters:
+  default: standard
+  enable:
+    - requiredfield
+  settings:
+    custom:
+      requiredfield:
+        type: 'module'
