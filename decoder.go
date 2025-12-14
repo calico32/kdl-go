@@ -760,12 +760,11 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		return target.Interface().(Unmarshaller).UnmarshalKDL(node)
 	}
 
-	if target.Kind() == reflect.Pointer {
+	for target.Kind() == reflect.Pointer {
 		elemType := target.Type().Elem()
 		if target.IsNil() {
 			target.Set(reflect.New(elemType))
 		}
-
 		target = target.Elem()
 	}
 
@@ -804,7 +803,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 			}
 
 			elem := reflect.New(target.Type().Elem())
-			if err := d.unmarshalNode(node, format, flags, elem); err != nil {
+			if err := d.unmarshalNode(node, format, flags, elem.Elem()); err != nil {
 				return err
 			}
 			target.Set(reflect.Append(target, elem.Elem()))
@@ -904,7 +903,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		}
 		return nil
 	default:
-		return errors.Errorf("unsupported type %v", target.Kind())
+		return errors.Errorf("cannot unmarshal node %q into %s", node.Name, target.Type())
 	}
 }
 

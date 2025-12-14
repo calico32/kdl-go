@@ -41,7 +41,7 @@ type People struct {
 }
 
 type PeopleInterface struct {
-	Persons []Personer `kdl:"person,multiple"`
+	Persons []*Personer `kdl:"person,multiple"`
 }
 
 type Integers struct {
@@ -74,6 +74,12 @@ type Arguments struct {
 
 type ArgumentsNode struct {
 	Arguments *Arguments `kdl:"arguments"`
+}
+
+type Pointers struct {
+	One   *int   `kdl:"one"`
+	Two   **int  `kdl:"two"`
+	Three ***int `kdl:"three"`
 }
 
 var decoderTests = []DecoderTest{
@@ -123,6 +129,11 @@ var decoderTests = []DecoderTest{
 	}}},
 	{"data 42\n", &Value{Data: 42}},
 	{"Name Alice\nAge 30\n", &NoTags{Name: "Alice", Age: 30}},
+	{"one 1\ntwo 2\nthree 3\n", &Pointers{
+		One:   func() *int { v := 1; return &v }(),
+		Two:   func() **int { v := 2; p := &v; return &p }(),
+		Three: func() ***int { v := 3; p1 := &v; p2 := &p1; return &p2 }(),
+	}},
 }
 
 func TestDecode(t *testing.T) {
@@ -135,7 +146,7 @@ func TestDecode(t *testing.T) {
 
 			err := kdl.Decode(strings.NewReader(test.Document), actual.Elem())
 			if err != nil {
-				t.Error(err)
+				t.Errorf("Decode failed: %+v", err)
 				return
 			}
 			if !reflect.DeepEqual(expected.Elem().Interface(), actual.Elem().Interface()) {

@@ -7,7 +7,7 @@ import (
 	"github.com/calico32/kdl-go"
 )
 
-const _configKdl = `
+const configKdl = `
 host example1 {
 	user root
 	hostname example.com
@@ -22,25 +22,30 @@ host example2 {
 `
 
 type Config struct {
-	Hosts []*_Host `kdl:"host,multiple"`
+	Hosts []*Host `kdl:"host,multiple"`
 }
 
-type _Host struct {
+type Host struct {
+	Name     string `kdl:",argument"`
 	User     string `kdl:"user"`
 	Hostname string `kdl:"hostname"`
 	Port     int    `kdl:"port"`
 }
 
 func ExampleConfig() {
-	f := strings.NewReader(_configKdl)
+	f := strings.NewReader(configKdl)
 
 	var config Config
 	err := kdl.Decode(f, &config)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Decode failed: %+v", err))
 	}
 
 	for _, host := range config.Hosts {
-		fmt.Printf("%s@%s:%d\n", host.User, host.Hostname, host.Port)
+		fmt.Printf("%s: %s@%s:%d\n", host.Name, host.User, host.Hostname, host.Port)
 	}
+
+	// Output:
+	// example1: root@example.com:22
+	// example2: http@example.org:2022
 }
