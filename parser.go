@@ -47,6 +47,7 @@ type parserImpl struct {
 	r     io.Reader
 	h     cgo.Handle
 	c     *C.kdl_parser
+	err   error
 }
 
 func kdlEventName(ev C.kdl_event) string {
@@ -119,7 +120,7 @@ func (p *Parser) Destroy() {
 
 func (p *Parser) debugf(format string, args ...any) {
 	if p.debug != nil {
-		fmt.Fprintf(p.debug, format, args...)
+		_, _ = fmt.Fprintf(p.debug, format, args...)
 	}
 }
 
@@ -127,7 +128,10 @@ func (p *Parser) debugf(format string, args ...any) {
 // [Document] instance. It returns an error if the document is invalid or if
 // there is an error reading from the reader.
 func (d *Parser) ParseDocument() (*Document, error) {
-	d.next()
+	_, err := d.next()
+	if err != nil {
+		return nil, err
+	}
 	if d.ev == nil {
 		return nil, errors.New("no event data")
 	}
@@ -149,7 +153,7 @@ func (d *Parser) ParseDocument() (*Document, error) {
 		break
 	}
 
-	_, err := d.accept(C.KDL_EVENT_EOF)
+	_, err = d.accept(C.KDL_EVENT_EOF)
 	if err != nil {
 		return nil, err
 	}
@@ -242,6 +246,9 @@ func (p *Parser) next() (*kdlEvent, error) {
 	}
 
 	ev := C.kdl_parser_next_event(p.c)
+	if p.err != nil {
+		return nil, p.err
+	}
 	if ev == nil {
 		return nil, errors.New("no event data")
 	}

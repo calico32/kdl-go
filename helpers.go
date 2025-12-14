@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"slices"
 )
 
@@ -75,17 +76,17 @@ func Set[K keyType](node *Node, key K, value Value) error {
 	return nil
 }
 
-// GetKV gets the first child with the given name from the KDL node and applies
+// GetKV gets the first child with the given name from the KDL document and applies
 // a transformation to its first argument before returning it.
 //
 // If no such child exists, it returns an error that with [ErrNotFound] in its tree,
 // which can be checked with [errors.Is].
-func GetKV[R any](node *Node, name string, fn func(Value) (R, error)) (R, error) {
-	if node == nil {
+func GetKV[R any](document *Document, name string, fn func(Value) (R, error)) (R, error) {
+	if document == nil {
 		return *new(R), fmt.Errorf("node is nil")
 	}
 
-	for _, child := range node.Children {
+	for _, child := range document.Nodes {
 		if child.Name == name {
 			return fn(child.Arguments[0])
 		}
@@ -127,6 +128,11 @@ func AsPointer[T any](fn func(Value) (T, error)) func(Value) (*T, error) {
 	}
 }
 
+// AsValue returns the KDL value itself without any transformation.
+func AsValue(v Value) (Value, error) {
+	return v, nil
+}
+
 // AsString returns the underlying value of a KDL string or an error if the
 // value is not a string.
 func AsString(v Value) (string, error) {
@@ -135,6 +141,17 @@ func AsString(v Value) (string, error) {
 		return v.value, nil
 	default:
 		return "", fmt.Errorf("value is not a string")
+	}
+}
+
+// AsByteSlice returns the underlying value of a KDL string as a byte slice or
+// an error if the value is not a string.
+func AsByteSlice(v Value) ([]byte, error) {
+	switch v := v.(type) {
+	case String:
+		return []byte(v.value), nil
+	default:
+		return nil, fmt.Errorf("value is not a string")
 	}
 }
 
@@ -311,4 +328,8 @@ func NewValue[T intoValue](v T) Value {
 	default:
 		panic(fmt.Sprintf("kdl.Wrap: unsupported type %T", v))
 	}
+}
+
+func Equals(a, b Value) bool {
+	return a == b || a.RawValue() == b.RawValue() || reflect.DeepEqual(a, b)
 }

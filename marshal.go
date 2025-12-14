@@ -1,5 +1,10 @@
 package kdl
 
+// A ValueMarshaller can marshal itself to a KDL Value.
+type ValueMarshaller interface {
+	MarshalKDLValue() (Value, error)
+}
+
 // A Marshaller can marshal itself to a KDL Node.
 type Marshaller interface {
 	MarshalKDL() (*Node, error)
@@ -8,6 +13,11 @@ type Marshaller interface {
 // A DocumentMarshaller can marshal itself to a KDL Document.
 type DocumentMarshaller interface {
 	MarshalKDLDocument() (*Document, error)
+}
+
+// A ValueUnmarshaller can unmarshal itself from a KDL Value.
+type ValueUnmarshaller interface {
+	UnmarshalKDLValue(value Value) error
 }
 
 // An Unmarshaller can unmarshal itself from a KDL Node.
@@ -36,22 +46,6 @@ func (d *Document) MarshalNodes(nodes ...Marshaller) error {
 	return nil
 }
 
-// MarshalChildren marshals the given [Marshaller]s and adds them to the node's children.
-func (n *Node) MarshalChildren(children ...Marshaller) error {
-	if cap(n.Children)-len(n.Children) < len(children) {
-		n.Children = append(make([]*Node, 0, len(n.Children)+len(children)), n.Children...)
-	}
-
-	for _, child := range children {
-		c, err := child.MarshalKDL()
-		if err != nil {
-			return err
-		}
-		n.Children = append(n.Children, c)
-	}
-	return nil
-}
-
 // unmarshallable contrains type T such that *T implements the [Unmarshaller] interface.
 type unmarshallable[T any] interface {
 	*T
@@ -68,6 +62,20 @@ func UnmarshalAll[T any, U unmarshallable[T]](nodes []*Node) ([]*T, error) {
 			return nil, err
 		}
 		out = append(out, item)
+	}
+	return out, nil
+}
+
+// MarshalAll marshals the given [Marshaller]s and returns a slice of the
+// resulting KDL nodes.
+func MarshalAll[T Marshaller](items []T) ([]*Node, error) {
+	out := make([]*Node, 0, len(items))
+	for _, item := range items {
+		node, err := item.MarshalKDL()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, node)
 	}
 	return out, nil
 }
