@@ -33,15 +33,15 @@ func (h *Host) UnmarshalKDL(node *kdl.Node) (err error) {
 	if err != nil {
 		return err
 	}
-	h.User, err = kdl.GetKV(node, "user", kdl.AsString)
+	h.User, err = kdl.GetKV(&node.Children, "user", kdl.AsString)
 	if err != nil {
 		return err
 	}
-	h.Hostname, err = kdl.GetKV(node, "hostname", kdl.AsString)
+	h.Hostname, err = kdl.GetKV(&node.Children, "hostname", kdl.AsString)
 	if err != nil {
 		return err
 	}
-	h.Port, err = kdl.GetKV(node, "port", kdl.AsInt)
+	h.Port, err = kdl.GetKV(&node.Children, "port", kdl.AsInt)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,6 @@ func (h *Host) UnmarshalKDL(node *kdl.Node) (err error) {
 }
 
 func ExampleUnmarshalAll() {
-
 	f := strings.NewReader(hostsKdl)
 	doc, err := kdl.NewParser(kdl.KdlVersion2, f).ParseDocument()
 	if err != nil {

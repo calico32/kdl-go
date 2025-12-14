@@ -135,12 +135,12 @@ func (e *Emitter) emitNode(node *Node) error {
 		}
 	}
 
-	if len(node.Children) > 0 || node.Hints.EmitEmptyChildren {
+	if len(node.Children.Nodes) > 0 || node.Hints.EmitEmptyChildren {
 		if ok := C.kdl_start_emitting_children(e.c); !ok {
 			return errors.New("failed to emit children")
 		}
 
-		for _, child := range node.Children {
+		for _, child := range node.Children.Nodes {
 			if err := e.emitNode(child); err != nil {
 				return err
 			}

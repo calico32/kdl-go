@@ -171,7 +171,7 @@ func (d *Parser) nextNode(parent *Node) (*Node, error) {
 	}
 	node := &Node{
 		Name:          start.Name,
-		Children:      []*Node{},
+		Children:      Document{Nodes: []*Node{}},
 		Arguments:     []Value{},
 		Properties:    map[string]Value{},
 		PropertyOrder: []string{},
@@ -219,7 +219,7 @@ func (d *Parser) nextNode(parent *Node) (*Node, error) {
 			if err != nil {
 				return nil, err
 			}
-			node.Children = append(node.Children, n)
+			node.Children.Nodes = append(node.Children.Nodes, n)
 			continue
 		}
 

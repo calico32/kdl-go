@@ -76,7 +76,7 @@ func (p *Printer) PrintNode(node *Node) {
 		p.PrintValue(node.Properties[prop])
 		p.print(")")
 	}
-	for _, child := range node.Children {
+	for _, child := range node.Children.Nodes {
 		p.PrintNode(child)
 	}
 	p.indent--
