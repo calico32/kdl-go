@@ -1,7 +1,6 @@
 package kdl
 
 import (
-	"fmt"
 	"math"
 	"math/big"
 	"reflect"
@@ -91,7 +90,6 @@ func (d *decoder) unmarshalInt(v Value, target reflect.Value) error {
 		if err != nil {
 			return errors.Wrapf(err, "cannot unmarshal %q into integer", v.value)
 		}
-		fmt.Printf("case\n")
 		return d.setInt(target, i)
 	case Null:
 		return d.setInt(target, 0)
