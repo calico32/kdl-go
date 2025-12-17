@@ -21,12 +21,9 @@ type Node struct {
 
 	// Hints controls the behavior of the emitter when serializing the node.
 	Hints emitterHints
-}
 
-type emitterHints struct {
-	// EmitEmptyChildren controls whether to emit an empty children block when
-	// the node has no children.
-	EmitEmptyChildren bool
+	// Location is the location of the node in the source file, if available.
+	Location Location
 }
 
 // NewNode creates a new KDL node with the given name.

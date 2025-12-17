@@ -8,7 +8,7 @@ import (
 	"github.com/calico32/kdl-go"
 )
 
-var debug = flag.Bool("d", false, "Enable debug output to stderr")
+// var debug = flag.Bool("d", false, "Enable debug output to stderr")
 var s = flag.Bool("s", false, "Output as s-expression")
 
 func main() {
@@ -24,11 +24,6 @@ func main() {
 		panic(err)
 	}
 
-	// debugWriter := os.Stderr
-	// if !*debug {
-	// 	debugWriter = nil
-	// }
-
 	doc, err := kdl.Parse(f)
 	if err != nil {
 		fmt.Println(err)
@@ -40,10 +35,9 @@ func main() {
 		return
 	}
 
-	// TODO: emitter
-	// e := kdl.NewEmitter(kdl.KdlVersion2, os.Stdout)
-	// err = e.EmitDocument(doc)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	err = kdl.Emit(doc, os.Stdout)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }
