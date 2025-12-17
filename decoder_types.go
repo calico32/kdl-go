@@ -181,7 +181,7 @@ func (d *decoder) setUint(target reflect.Value, value uint64) error {
 	return nil
 }
 
-// unmarshalFloat unmarshals a KDL value into a Go float, converting as needed.
+// unmarshalFloat unmarshals a KDL value into a Go float, converting as needed
 // outside of strict mode.
 func (d *decoder) unmarshalFloat(v Value, target reflect.Value) error {
 	if d.strict {
@@ -460,7 +460,7 @@ func (d *decoder) unmarshalDuration(v Value, format string, target reflect.Value
 // returns an error.
 func (d *decoder) unmarshalValueIntoInterface(v Value, target reflect.Value) error {
 	val := reflect.ValueOf(v.RawValue())
-	// special case: if unmarshalling an int into any, prefer int over int64
+	// special case: if unmarshaling an int into any, prefer int over int64
 	if intVal, ok := v.(Integer); ok && intVal.value <= math.MaxInt {
 		target.Set(reflect.ValueOf(int(intVal.value)))
 		return nil

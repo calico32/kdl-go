@@ -18,39 +18,39 @@ var (
 )
 
 // Decode reads a KDL document from r and unmarshals it into v. If v implements
-// the [DocumentUnmarshaller] interface, that is used to unmarshal the document.
+// the [DocumentUnmarshaler] interface, that is used to unmarshal the document.
 // Otherwise, v must be a pointer to a struct, interface, or map, and the
-// document's nodes are unmarshalled into v's fields, properties, or map
+// document's nodes are unmarshaled into v's fields, properties, or map
 // entries.
 //
 // # Structs
 //
 // For struct targets, nodes are mapped to struct fields by name or tag. If a
-// struct field's type F implements the [Unmarshaller] interface, that is used
+// struct field's type F implements the [Unmarshaler] interface, that is used
 // to unmarshal the node. Otherwise, F must be a pointer to:
 //   - a struct, in which case the node's arguments, properties, and children are
 //     mapped to struct fields
-//   - any, in which case the node is unmarshalled into a map[string]any
+//   - any, in which case the node is unmarshaled into a map[string]any
 //   - a [value type] (see below), in which case the node's first argument is
-//     unmarshalled into the value
+//     unmarshaled into the value
 //   - a map[T]U where T is string/any integer type/any unsigned integer type,
 //     and U is a [value type], in which case the node's arguments, properties,
-//     and children are unmarshalled into map entries
+//     and children are unmarshaled into map entries
 //   - a []T where T is a [value type], in which case the node's arguments are
-//     unmarshalled into slice elements
+//     unmarshaled into slice elements
 //   - an array [N]T where T is a [value type], in which case the node's
-//     arguments are unmarshalled into array elements (the node must have exactly
+//     arguments are unmarshaled into array elements (the node must have exactly
 //     N elements)
 //
 // # Struct Tags
 //
-// Unmarshalling behavior for struct fields can be customized using the
+// Unmarshaling behavior for struct fields can be customized using the
 // `kdl:"..."` struct tag. The tag commonly specifies the lowercase name of the
 // node that maps to it (e.g., `kdl:"host"`). Additionally, the following flags
 // can be used:
 //   - multiple: indicates that the node can appear multiple times and each
 //     should be mapped to a single slice element (without it, the first node's
-//     arguments are each unmarshalled into slice elements). Valid only on slice
+//     arguments are each unmarshaled into slice elements). Valid only on slice
 //     fields, ignored otherwise.
 //   - arguments: indicates that the field should receive any arguments not
 //     mapped to other fields. Valid only on slice, array, or map types. Can only
@@ -90,8 +90,8 @@ var (
 //   - [time.Duration],
 //   - any (in which case the result of [Value.RawValue] is used except for KDL
 //     integers, which are by default int instead of int64),
-//   - or a type implementing [ValueUnmarshaller] (in which case
-//     [ValueUnmarshaller.UnmarshalKDLValue] is used to unmarshal the value).
+//   - or a type implementing [ValueUnmarshaler] (in which case
+//     [ValueUnmarshaler.UnmarshalKDLValue] is used to unmarshal the value).
 //
 // Values will be formatted or parsed for canonical conversions, like string to
 // int, string to bool, etc. Use [DecodeStrict] to disable such conversions.
@@ -114,7 +114,7 @@ func Decode(r io.Reader, v any) error {
 
 // DecodeStrict is like [Decode] but enables strict mode, which returns an error
 // if any nodes, properties, or arguments cannot be mapped to the target value.
-// It also disables any canonical conversions when unmarshalling values.
+// It also disables any canonical conversions when unmarshaling values.
 func DecodeStrict(r io.Reader, v any) error {
 	doc, err := Parse(r)
 	if err != nil {
@@ -145,7 +145,7 @@ func DecodeNamedStrict(name string, r io.Reader, v any) error {
 
 // Unmarshal unmarshals n into v. See [Decode] for details.
 func Unmarshal(n *Node, v any) error {
-	if u, ok := v.(Unmarshaller); ok {
+	if u, ok := v.(Unmarshaler); ok {
 		return u.UnmarshalKDL(n)
 	}
 	d := &decoder{strict: false}
@@ -159,10 +159,10 @@ func Unmarshal(n *Node, v any) error {
 
 // UnmarshalStrict unmarshals n into v in strict mode, which returns an error if
 // any nodes, properties, or arguments cannot be mapped to the target value. It
-// also disables any canonical conversions when unmarshalling values. See
+// also disables any canonical conversions when unmarshaling values. See
 // [DecodeStrict] for details.
 func UnmarshalStrict(n *Node, v any) error {
-	if u, ok := v.(Unmarshaller); ok {
+	if u, ok := v.(Unmarshaler); ok {
 		return u.UnmarshalKDL(n)
 	}
 	d := &decoder{strict: true}
@@ -194,7 +194,7 @@ type decoder struct {
 }
 
 func unmarshalDocument(doc *Document, v any, strict bool) error {
-	if u, ok := v.(DocumentUnmarshaller); ok {
+	if u, ok := v.(DocumentUnmarshaler); ok {
 		return u.UnmarshalKDLDocument(doc)
 	}
 
@@ -210,7 +210,7 @@ func unmarshalDocument(doc *Document, v any, strict bool) error {
 	case reflect.Struct:
 		return d.unmarshalNodesIntoStructFields(doc.Nodes, target)
 	default:
-		return fmt.Errorf("argument must be a pointer to struct, interface, or map (unmarshalling document, got %s)", target.Kind())
+		return fmt.Errorf("argument must be a pointer to struct, interface, or map (unmarshaling document, got %s)", target.Kind())
 	}
 }
 
@@ -224,7 +224,7 @@ func unmarshalDocument(doc *Document, v any, strict bool) error {
 //     types, an error is returned.
 //   - If v is otherwise a pointer to a different type, a reflect.Value of the
 //     pointer's element is returned. It is the caller’s responsibility to ensure
-//     it can be unmarshalled into.
+//     it can be unmarshaled into.
 //   - If v is not a pointer, an error is returned.
 func unwrapPointerOrInterface(v any) (reflect.Value, error) {
 	if v, ok := v.(reflect.Value); ok {
@@ -269,7 +269,7 @@ func (d *decoder) unmarshalNodesIntoMap(nodes []*Node, target reflect.Value) err
 	}
 	hasStringKeys := target.Type().Key().ConvertibleTo(reflect.TypeFor[string]())
 	if !hasStringKeys {
-		return errors.New("map key type must be string when unmarshalling properties")
+		return errors.New("map key type must be string when unmarshaling properties")
 	}
 	for _, node := range nodes {
 		key := reflect.ValueOf(node.Name).Convert(target.Type().Key())
@@ -278,7 +278,7 @@ func (d *decoder) unmarshalNodesIntoMap(nodes []*Node, target reflect.Value) err
 			return err
 		}
 		if target.MapIndex(key).IsValid() {
-			return errors.Errorf("duplicate node %q unmarshalling into map", node.Name)
+			return errors.Errorf("duplicate node %q unmarshaling into map", node.Name)
 		}
 		target.SetMapIndex(key, value)
 	}
@@ -356,7 +356,7 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, targetStruct ref
 
 // unmarshalNodeIntoStructField attempts to unmarshal a KDL node into a field of
 // the given struct by matching the node name to struct field names or tags. If
-// a matching field is found, the node is unmarshalled into that field and the
+// a matching field is found, the node is unmarshaled into that field and the
 // index of the field is returned. If no matching field is found, -1 is
 // returned.
 func (d *decoder) unmarshalNodeIntoStructField(node *Node, tags []structTag, targetStruct reflect.Value) (index int, err error) {
@@ -403,9 +403,9 @@ func (d *decoder) unmarshalNodeIntoStructField(node *Node, tags []structTag, tar
 //     is present to consume them.
 //
 // If all of the following are true, an error is returned indicating that nothing was
-// unmarshalled:
+// unmarshaled:
 //   - the node has at least one argument, property, or child;
-//   - no properties or children matched any struct field or were unmarshalled into;
+//   - no properties or children matched any struct field or were unmarshaled into;
 //   - and there are no `argument`, `arguments`, `properties`, or `children`
 //     fields to consume the remaining data.
 func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value) error {
@@ -471,7 +471,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value
 		field := targetStruct.Field(i)
 		format := structTags[i].format
 		if argumentNum >= len(node.Arguments) {
-			return errors.Errorf("expected at least %d arguments", argumentNum+1)
+			return errors.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.Location, argumentNum+1, node.Name, structType)
 		}
 		if err := d.unmarshalValue(node.Arguments[argumentNum], format, field); err != nil {
 			return err
@@ -518,7 +518,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value
 				unusedProperties[propName] = propValue
 			}
 		}
-		if err := d.unmarshalPropertiesField(unusedProperties, format, field); err != nil {
+		if err := d.unmarshalPropertiesField(node.Location, unusedProperties, format, field); err != nil {
 			return err
 		}
 	}
@@ -551,7 +551,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value
 		len(usedProperties) == 0 &&
 		len(usedChildren) == 0 &&
 		len(argumentFields) == 0 && argumentsField == -1 && propertiesField == -1 && childrenField == -1 {
-		return fmt.Errorf("don't know what to do with node %q unmarshalling into struct %s", node.Name, structType)
+		return fmt.Errorf("don't know what to do with node %q unmarshaling into struct %s", node.Name, structType)
 	}
 
 	return nil
@@ -639,7 +639,7 @@ func (d *decoder) unmarshalValues(arguments []Value, format string, target refle
 // or struct. Behaves as expected for maps, and for structs, matches property
 // names to struct field names or tags, returning a strict mode error if any
 // property cannot be matched.
-func (d *decoder) unmarshalPropertiesField(properties map[string]Value, format string, target reflect.Value) error {
+func (d *decoder) unmarshalPropertiesField(location Location, properties map[string]Value, format string, target reflect.Value) error {
 	if target.Kind() == reflect.Pointer {
 		elem := target.Type().Elem()
 		if elem.Kind() != reflect.Map && elem.Kind() != reflect.Struct {
@@ -657,7 +657,7 @@ func (d *decoder) unmarshalPropertiesField(properties map[string]Value, format s
 		}
 		hasStringKeys := target.Type().Key().ConvertibleTo(reflect.TypeFor[string]())
 		if !hasStringKeys {
-			return errors.New("map key type must be string when unmarshalling properties")
+			return errors.New("map key type must be string when unmarshaling properties")
 		}
 		for propName, propValue := range properties {
 			key := reflect.ValueOf(propName).Convert(target.Type().Key())
@@ -666,7 +666,7 @@ func (d *decoder) unmarshalPropertiesField(properties map[string]Value, format s
 				return err
 			}
 			if target.MapIndex(key).IsValid() {
-				return errors.Errorf("duplicate property %q unmarshalling into map", propName)
+				return errors.Errorf("%s: duplicate property %q unmarshaling into map", location, propName)
 			}
 			target.SetMapIndex(key, value)
 		}
@@ -724,7 +724,7 @@ func (d *decoder) unmarshalChildrenField(children []*Node, target reflect.Value)
 		}
 		hasStringKeys := target.Type().Key().ConvertibleTo(reflect.TypeFor[string]())
 		if !hasStringKeys {
-			return errors.New("map key type must be string when unmarshalling properties")
+			return errors.New("map key type must be string when unmarshaling properties")
 		}
 		for _, child := range children {
 			key := reflect.ValueOf(child.Name).Convert(target.Type().Key())
@@ -733,7 +733,7 @@ func (d *decoder) unmarshalChildrenField(children []*Node, target reflect.Value)
 				return err
 			}
 			if target.MapIndex(key).IsValid() {
-				return errors.Errorf("duplicate child %q unmarshalling into map", child.Name)
+				return errors.Errorf("%s: duplicate child %q unmarshaling into map", child.Location, child.Name)
 			}
 			target.SetMapIndex(key, value)
 		}
@@ -741,7 +741,7 @@ func (d *decoder) unmarshalChildrenField(children []*Node, target reflect.Value)
 
 	case reflect.Struct:
 		// ignore?
-		panic("unimplemented: unmarshalling children into struct")
+		panic("unimplemented: unmarshaling children into struct")
 
 	default:
 		return errors.New("properties field must be map or struct")
@@ -761,11 +761,11 @@ var (
 // delegates [decoder.unmarshalNodeIntoStruct] for struct targets.
 func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, target reflect.Value) error {
 	// TODO: is this or the one further down after the pointer unwrap necessary?
-	if target.Type().AssignableTo(reflect.TypeFor[Unmarshaller]()) {
+	if target.Type().AssignableTo(reflect.TypeFor[Unmarshaler]()) {
 		if target.IsNil() {
 			target.Set(reflect.New(target.Type().Elem()))
 		}
-		return target.Interface().(Unmarshaller).UnmarshalKDL(node)
+		return target.Interface().(Unmarshaler).UnmarshalKDL(node)
 	}
 
 	for target.Kind() == reflect.Pointer {
@@ -776,13 +776,14 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		target = target.Elem()
 	}
 
-	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[Unmarshaller]()) {
+	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[Unmarshaler]()) {
 		u := reflect.New(target.Type())
-		err := u.Interface().(Unmarshaller).UnmarshalKDL(node)
+		err := u.Interface().(Unmarshaler).UnmarshalKDL(node)
 		if err != nil {
 			return err
 		}
 		target.Set(u.Elem())
+		return nil
 	}
 
 	// special handling for time.Time and time.Duration
@@ -883,7 +884,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 
 		if hasProperties {
 			if !hasStringKeys {
-				return errors.New("map key type must be string when unmarshalling properties")
+				return errors.New("map key type must be string when unmarshaling properties")
 			}
 			for _, prop := range node.PropertyOrder {
 				key := reflect.ValueOf(prop).Convert(target.Type().Key())
@@ -897,7 +898,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 
 		if hasChildren {
 			if !hasStringKeys {
-				return errors.New("map key type must be string when unmarshalling children")
+				return errors.New("map key type must be string when unmarshaling children")
 			}
 
 			for _, child := range node.Children.Nodes {
@@ -917,11 +918,11 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 
 // unmarshalValue unmarshals a KDL value into a single Go value. See [Unmarshal]
 // for details on supported value types. It handles special cases like
-// [time.Time], [time.Duration], and [ValueUnmarshaller], using an optional
+// [time.Time], [time.Duration], and [ValueUnmarshaler], using an optional
 // format string for guidance.
 func (d *decoder) unmarshalValue(value Value, format string, target reflect.Value) error {
 	if target.Type().NumMethod() > 0 && target.CanInterface() {
-		if u, ok := target.Interface().(ValueUnmarshaller); ok {
+		if u, ok := target.Interface().(ValueUnmarshaler); ok {
 			return u.UnmarshalKDLValue(value)
 		}
 	}
