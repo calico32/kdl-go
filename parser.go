@@ -1,302 +1,413 @@
 package kdl
 
-// #cgo CFLAGS: -I/usr/local/include
-// #cgo LDFLAGS: -L/usr/local/lib -lkdl
-// #include "kdl.h"
-import "C"
-
 import (
 	"fmt"
 	"io"
-	"path/filepath"
-	"runtime"
-	"runtime/cgo"
-	"unsafe"
+	"math"
+	"math/big"
+	"strings"
 
 	"github.com/pkg/errors"
 )
 
-type KdlVersion int
-
-const (
-	KdlVersionAuto KdlVersion = iota
-	KdlVersion1
-	KdlVersion2
-)
-
-// A kdlEvent is a Go equivalent for the C kdl_event_data struct.
-type kdlEvent struct {
-	Type  C.kdl_event
-	Name  string
-	Value Value
+// Parse parses a KDL document from the provided reader and returns it.
+func Parse(r io.Reader) (*Document, error) {
+	return ParseNamed("<input>", r)
 }
 
-func (d *kdlEvent) String() string {
-	return fmt.Sprintf("kdlEvent{Type: %s, Name: %v, Value: %v}", kdlEventName(d.Type), d.Name, d.Value)
-}
-
-// A Parser is a wrapper around a ckdl Parser that reads from an
-// [io.Reader].
-type Parser struct {
-	parserImpl
-}
-
-type parserImpl struct {
-	ev    *kdlEvent
-	debug io.Writer
-	r     io.Reader
-	h     cgo.Handle
-	c     *C.kdl_parser
-	err   error
-}
-
-func kdlEventName(ev C.kdl_event) string {
-	switch ev {
-	case C.KDL_EVENT_ARGUMENT:
-		return "argument"
-	case C.KDL_EVENT_END_NODE:
-		return "end_node"
-	case C.KDL_EVENT_EOF:
-		return "eof"
-	case C.KDL_EVENT_PARSE_ERROR:
-		return "parse_error"
-	case C.KDL_EVENT_PROPERTY:
-		return "property"
-	case C.KDL_EVENT_START_NODE:
-		return "start_node"
+// ParseNamed is like [Parse], but allows specifying a name for the input
+// source. Nodes and errors will reference this name in their locations.
+func ParseNamed(name string, r io.Reader) (*Document, error) {
+	src, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
 	}
-	return "unknown"
+	l := newLexer(name, src, nil)
+	p := newParser(l, nil)
+	return p.ParseDocument()
 }
 
-// NewParser creates a new parser that reads from the given [io.Reader]. It
-// allocates the underlying C parser and returns a [parser] instance.
-//
-// The parser may be manually destroyed by calling [parser.Destroy], or it
-// will be automatically destroyed if the parser instance is no longer
-// reachable. The parser should not be used after it is destroyed.
-func NewParser(kdlVersion KdlVersion, r io.Reader) *Parser {
-	impl := parserImpl{r: r}
-	var v C.kdl_parse_option
-	switch kdlVersion {
-	case KdlVersionAuto:
-		v = C.KDL_DETECT_VERSION
-	case KdlVersion1:
-		v = C.KDL_READ_VERSION_1
-	case KdlVersion2:
-		v = C.KDL_READ_VERSION_2
-	default:
-		panic("invalid kdl version")
+func newParser(lex *lexer, trace io.Writer) *parser {
+	p := &parser{
+		lexer: lex,
+		trace: trace,
 	}
-
-	impl.h = cgo.NewHandle(impl)
-	impl.c = C.kdl_create_stream_parser((C.kdl_read_func)(C.kdlgo_read), unsafe.Pointer(&impl.h), v)
-
-	p := &Parser{impl}
-	runtime.AddCleanup(p, func(impl *parserImpl) {
-		C.kdl_destroy_parser(impl.c)
-		impl.h.Delete()
-		impl.c = nil
-		impl.r = nil
-	}, &impl)
-
+	lex.AddErrorHandler(func(pos Pos, err error) {
+		p.errors = append(p.errors, errors.Wrapf(err, "lex error at %s", p.lexer.File().Location(pos)))
+	})
+	p.next()
+	p.next()
 	return p
 }
 
-// SetDebug sets the writer to which debug output will be written. If the writer
-// is nil, debug output will be disabled.
-func (p *Parser) SetDebug(w io.Writer) {
-	p.debug = w
+type parser struct {
+	lexer     *lexer
+	token     token
+	nextToken token
+	errors    []error
+	trace     io.Writer
 }
 
-// Destroy destroys the parser and releases all resources associated with it.
-// The parser should not be used after this method is called.
-func (p *Parser) Destroy() {
-	C.kdl_destroy_parser(p.c)
-	p.c = nil
-	p.ev = nil
-	p.r = nil
-	p.h.Delete()
+func (p *parser) errorf(pos Pos, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	err := errors.Errorf("parse error at %s: %s", p.lexer.File().Location(pos), msg)
+	if p.trace != nil {
+		_, _ = fmt.Fprintf(p.trace, "%+v\n", err)
+	}
+	p.errors = append(p.errors, err)
 }
 
-func (p *Parser) debugf(format string, args ...any) {
-	if p.debug != nil {
-		_, _ = fmt.Fprintf(p.debug, format, args...)
-	}
+func (p *parser) errorExpected(expected string) {
+	tok := p.token
+	p.errorf(tok.Pos, "expected %s, got %s", expected, tok.Type)
+}
+func (p *parser) next() {
+	p.token = p.nextToken
+	tok := p.lexer.Next()
+	p.nextToken = tok
 }
 
-// ParseDocument parses a document from the underlying reader and returns a
-// [Document] instance. It returns an error if the document is invalid or if
-// there is an error reading from the reader.
-func (d *Parser) ParseDocument() (*Document, error) {
-	_, err := d.next()
-	if err != nil {
-		return nil, err
+func (p *parser) expect(tt tokenType) token {
+	tok := p.token
+	if tok.Type != tt {
+		p.errorf(tok.Pos, "expected token type %v, got %v", tt, tok.Type)
 	}
-	if d.ev == nil {
-		return nil, errors.New("no event data")
-	}
+	p.next()
+	return tok
+}
 
-	doc := &Document{
-		Nodes: []*Node{},
+// ParseDocument parses a KDL document and returns it.
+//
+//	document := bom? version? nodes
+//	nodes := (line-space* node)* line-space*
+func (p *parser) ParseDocument() (*Document, error) {
+	d := &Document{}
+	d.Nodes = p.parseNodes()
+	p.expect(tokenEOF)
+	if len(p.errors) > 0 {
+		return nil, p.errors[0]
 	}
+	return d, nil
+}
 
+func (p *parser) parseNodes() (nodes []*Node) {
+	p.skipLineSpace()
+	for p.token.Type != tokenEOF && p.token.Type != tokenRBrace {
+		node := p.parseNode(true)
+		if node != nil {
+			nodes = append(nodes, node)
+		}
+		switch p.token.Type {
+		case tokenNewline, tokenSingleLineComment, tokenSemi, tokenEOF:
+			p.next()
+			p.skipLineSpace()
+		case tokenRBrace:
+			// OK, no terminator needed
+		case tokenIllegal:
+			// abort
+			p.next() // make progress
+			return nodes
+		default:
+			p.errorExpected("node terminator")
+		}
+	}
+	return nodes
+}
+
+// readSlashdash reads a slashdash.
+//
+//	slashdash := '/-' line-space*
+func (p *parser) readSlashdash() {
+	p.expect(tokenSlashdash)
+	p.skipLineSpace()
+}
+
+// parseNode parses a KDL node without the terminator and returns it.
+//
+//	node := base-node node-terminator
+//	base-node := slashdash? type? node-space* string
+//	  (node-space+ slashdash? node-prop-or-arg)*
+//	  // slashdashed node-children must always be after props and args.
+//	  (node-space+ slashdash node-children)*
+//	  (node-space+ node-children)?
+//	  (node-space+ slashdash node-children)*
+//	  node-space*
+//	node-prop-or-arg := prop | value
+//	node-children := '{' nodes final-node? '}'
+//	final-node := base-node node-terminator?
+//	prop := string node-space* '=' node-space* value
+//	value := type? node-space* (string | number | keyword)
+//	type := '(' node-space* string node-space* ')'
+//	node-terminator := single-line-comment | newline | ';' | eof
+func (p *parser) parseNode(allowSlashdash bool) *Node {
+	n := &Node{
+		Properties: make(map[string]Value),
+	}
+	if allowSlashdash && p.token.Type == tokenSlashdash {
+		p.readSlashdash()
+		p.parseNode(false)
+		return nil
+	}
+	if p.token.Type == tokenLParen {
+		typ := p.parseType()
+		n.TypeAnnotation = &typ
+	}
+	p.skipNodeSpace()
+	n.Location = p.lexer.File().Location(p.token.Pos)
+	n.Name = p.parseString()
+
+	slashdashChildrenEncountered := false
+	childrenEncountered := false
 	for {
-		if d.ev.Type == C.KDL_EVENT_START_NODE {
-			n, err := d.nextNode(nil)
-			if err != nil {
-				return nil, err
-			}
-			doc.Nodes = append(doc.Nodes, n)
+		switch p.token.Type {
+		case tokenEOF, tokenNewline, tokenSingleLineComment, tokenSemi, tokenRBrace:
+			// end of node
+			return n
+		case tokenIllegal:
+			p.next() // make progress
 			continue
 		}
 
-		break
-	}
+		if p.token.Type != tokenSlashdash && p.token.Type != tokenLBrace {
+			ok := p.readNodeSpace()
+			if !ok {
+				p.next()
+				continue
+			}
+			p.skipNodeSpace()
+		}
 
-	_, err = d.accept(C.KDL_EVENT_EOF)
-	if err != nil {
-		return nil, err
-	}
+		slashdash := false
 
-	return doc, nil
+		switch p.token.Type {
+		case tokenEOF, tokenNewline, tokenSingleLineComment, tokenSemi, tokenRBrace:
+			// end of node
+			return n
+		case tokenIllegal:
+			p.next() // make progress
+			continue
+		}
+
+		if p.token.Type == tokenSlashdash {
+			p.readSlashdash()
+			slashdash = true
+		}
+
+		if childrenEncountered && !slashdash {
+			// once children have been encountered, no more non-slashdash
+			// children are allowed; we stop parsing the node here
+			return n
+		}
+
+		// children
+		if p.token.Type == tokenLBrace {
+			p.next() // consume LBrace
+			nodes := p.parseNodes()
+			p.expect(tokenRBrace)
+
+			if !slashdash {
+				childrenEncountered = true
+				n.Children.Nodes = nodes
+			} else {
+				slashdashChildrenEncountered = true
+			}
+			continue
+		}
+
+		// props or args
+		if slashdashChildrenEncountered {
+			// once slashdash children have been encountered, no more props
+			// or args are allowed; we stop parsing the node here
+			return n
+		}
+
+		switch p.token.Type {
+		case tokenUnambiguousIdent, tokenSignedIdent, tokenDottedIdent,
+			tokenQuotedString, tokenQuotedMultiLineString,
+			tokenRawString, tokenRawMultiLineString:
+			// string: could be prop name or arg value
+			s := p.parseString()
+			savepoint := p.savepoint()
+			p.skipNodeSpace()
+			if p.token.Type == tokenEqual {
+				// prop
+				p.next() // consume Equal
+				p.skipNodeSpace()
+				val := p.parseValue()
+				if !slashdash {
+					n.AddProperty(s, val)
+				}
+			} else {
+				// arg
+				p.restorepoint(savepoint)
+				if !slashdash {
+					n.Arguments = append(n.Arguments, NewString(s))
+				}
+			}
+
+		default:
+			if p.token.Type == tokenEOF {
+				if slashdash {
+					p.errorf(p.token.Pos, "expected value after slashdash")
+					return n
+				}
+			}
+			val := p.parseValue()
+			if val == nil {
+				p.next()
+				continue
+			}
+			if !slashdash {
+				n.Arguments = append(n.Arguments, val)
+			}
+		}
+	}
 }
 
-// nextNode parses and returns the next complete node from the underlying
-// reader, or an error if the node is invalid or if there is an error reading
-// from the reader.
-func (d *Parser) nextNode(parent *Node) (*Node, error) {
-	start, err := d.accept(C.KDL_EVENT_START_NODE)
-	if err != nil {
-		return nil, err
-	}
-	node := &Node{
-		Name:          start.Name,
-		Children:      Document{Nodes: []*Node{}},
-		Arguments:     []Value{},
-		Properties:    map[string]Value{},
-		PropertyOrder: []string{},
-		Parent:        parent,
-	}
+type savepoint struct {
+	token      token
+	nextToken  token
+	lexerState LexerState
+}
 
-	switch s := start.Value.(type) {
-	case Null:
-		node.TypeAnnotation = s.typeAnnotation
+func (p *parser) savepoint() savepoint {
+	return savepoint{
+		token:      p.token,
+		nextToken:  p.nextToken,
+		lexerState: p.lexer.Save(),
+	}
+}
+
+func (p *parser) restorepoint(savepoint savepoint) {
+	p.token = savepoint.token
+	p.nextToken = savepoint.nextToken
+	p.lexer.Restore(savepoint.lexerState)
+}
+
+// parseType parses a type annotation and returns the unquoted string value.
+//
+//	type := '(' node-space* string node-space* ')'
+func (p *parser) parseType() string {
+	p.expect(tokenLParen)
+	p.skipNodeSpace()
+	str := p.parseString()
+	p.skipNodeSpace()
+	p.expect(tokenRParen)
+	return str
+}
+
+// parseString parses a string and returns its value.
+//
+//	string := identifier-string | quoted-string | raw-string
+//	identifier-string := unambiguous-ident | signed-ident | dotted-ident
+func (p *parser) parseString() string {
+	tok := p.token
+	switch tok.Type {
+	case tokenUnambiguousIdent, tokenSignedIdent, tokenDottedIdent,
+		tokenQuotedString, tokenQuotedMultiLineString,
+		tokenRawString, tokenRawMultiLineString:
+		p.next()
+		return tok.Text
 	default:
-		return nil, errors.New("invalid type annotation")
+		p.errorExpected("string")
+		return ""
 	}
-
-	// accept arguments and properties
-	for {
-		if d.ev.Type == C.KDL_EVENT_ARGUMENT {
-			arg, err := d.accept(C.KDL_EVENT_ARGUMENT)
-			if err != nil {
-				return nil, err
-			}
-			node.Arguments = append(node.Arguments, arg.Value)
-			continue
-		}
-
-		if d.ev.Type == C.KDL_EVENT_PROPERTY {
-			prop, err := d.accept(C.KDL_EVENT_PROPERTY)
-			if err != nil {
-				return nil, err
-			}
-			_, repeated := node.Properties[prop.Name]
-			node.Properties[prop.Name] = prop.Value
-			if !repeated {
-				node.PropertyOrder = append(node.PropertyOrder, prop.Name)
-			}
-			continue
-		}
-
-		break
-	}
-
-	// accept children
-	for {
-		if d.ev.Type == C.KDL_EVENT_START_NODE {
-			n, err := d.nextNode(node)
-			if err != nil {
-				return nil, err
-			}
-			node.Children.Nodes = append(node.Children.Nodes, n)
-			continue
-		}
-
-		break
-	}
-
-	_, err = d.accept(C.KDL_EVENT_END_NODE)
-	if err != nil {
-		return nil, err
-	}
-
-	return node, nil
 }
 
-// next gets the next event from the ckdl parser and returns an equivalent
-// [kdlEvent], or an error if the ckdl parser returns an error or an EOF is
-// reached.
-func (p *Parser) next() (*kdlEvent, error) {
-	if p.ev != nil && p.ev.Type == C.KDL_EVENT_PARSE_ERROR {
-		return nil, errors.New("parse error already reached")
-	}
-	if p.ev != nil && p.ev.Type == C.KDL_EVENT_EOF {
-		return p.ev, nil
-	}
-
-	ev := C.kdl_parser_next_event(p.c)
-	if p.err != nil {
-		return nil, p.err
-	}
-	if ev == nil {
-		return nil, errors.New("no event data")
-	}
-	if ev.event == C.KDL_EVENT_PARSE_ERROR {
-		return nil, errors.New("ckdl parse error")
+// parseValue parses a KDL string, number, or keyword and returns it.
+//
+//	number := keyword-number | hex | octal | binary | decimal
+//	keyword := boolean | '#null'
+//	keyword-number := '#inf' | '#-inf' | '#nan'
+//	boolean := '#true' | '#false'
+func (p *parser) parseValue() Value {
+	var typeAnnot *string
+	if p.token.Type == tokenLParen {
+		t := p.parseType()
+		typeAnnot = &t
+		p.skipNodeSpace()
 	}
 
-	name := goString(&ev.name)
-	v, err := newKdlValue(ev.value)
-	if err != nil {
-		return nil, err
+	tok := p.token
+	switch typ := tok.Type; typ {
+	case tokenUnambiguousIdent, tokenSignedIdent, tokenDottedIdent,
+		tokenQuotedString, tokenQuotedMultiLineString,
+		tokenRawString, tokenRawMultiLineString:
+		str := p.parseString()
+		return NewString(str).WithTypeAnnotation(typeAnnot)
+	case tokenTrue, tokenFalse:
+		p.next()
+		return NewBoolean(typ == tokenTrue).WithTypeAnnotation(typeAnnot)
+	case tokenNull:
+		p.next()
+		return NewNull().WithTypeAnnotation(typeAnnot)
+	case tokenInf:
+		p.next()
+		return NewFloat(math.Inf(1)).WithTypeAnnotation(typeAnnot)
+	case tokenNegInf:
+		p.next()
+		return NewFloat(math.Inf(-1)).WithTypeAnnotation(typeAnnot)
+	case tokenNaN:
+		p.next()
+		return NewFloat(math.NaN()).WithTypeAnnotation(typeAnnot)
+	case tokenDecimal, tokenHexadecimal, tokenOctal, tokenBinary:
+		return p.parseNumber().WithTypeAnnotation(typeAnnot)
+	default:
+		p.errorExpected("value")
+		return nil
 	}
-
-	p.ev = &kdlEvent{
-		Type:  C.kdl_event(ev.event),
-		Name:  name,
-		Value: v,
-	}
-
-	p.debugf("--> %s\n", p.ev)
-
-	return p.ev, nil
 }
 
-// accept checks if the current event is of the expected type and returns it if
-// it is, or an error if it is not. It also advances the parser to the next
-// event.
-func (p *Parser) accept(eventType C.kdl_event) (ev *kdlEvent, err error) {
-	_, file, line, _ := runtime.Caller(1)
-	// always advance the parser
-	defer func() {
-		_, err = p.next()
-	}()
+// parseNumber parses a KDL numeric literal and returns it.
+func (p *parser) parseNumber() Value {
+	digits := p.token.Text
+	base := 10
+	fp := false
+	switch p.token.Type {
+	case tokenDecimal:
+		fp = strings.ContainsAny(digits, ".eE")
+	case tokenHexadecimal:
+		base = 16
+		digits = digits[2:]
+	case tokenOctal:
+		base = 8
+		digits = digits[2:]
+	case tokenBinary:
+		base = 2
+		digits = digits[2:]
+	default:
+		p.errorExpected("number")
+		return NewNull()
+	}
+	p.next()
 
-	file = filepath.Base(file)
-	caller := fmt.Sprintf("%s:%d", file, line)
-
-	if p.ev == nil {
-		p.debugf(" <-- %s NOACCEPT no data\n", caller)
-		return nil, errors.New("no event data")
+	if fp {
+		// floating point
+		var f big.Float
+		_, _, err := f.Parse(strings.ReplaceAll(digits, "_", ""), 10)
+		if err != nil {
+			p.errorf(p.token.Pos, "invalid float literal: %q", digits)
+			return NewNull()
+		}
+		f64, prec := f.Float64()
+		if prec == big.Exact {
+			return NewFloat(f64)
+		} else {
+			return NewBigFloat(&f)
+		}
 	}
 
-	if p.ev.Type != eventType {
-		p.debugf(" <-- %s NOACCEPT expected %s, got %s\n", caller, kdlEventName(eventType), kdlEventName(p.ev.Type))
-		return nil, errors.Errorf("expected %s, got %s", kdlEventName(eventType), kdlEventName(p.ev.Type))
+	// integer
+	digits = strings.ReplaceAll(digits, "_", "")
+	var i big.Int
+	_, ok := i.SetString(digits, base)
+	if !ok {
+		p.errorf(p.token.Pos, "invalid integer literal: %q", digits)
+		return NewNull()
 	}
-
-	p.debugf(" <-- %s ACCEPT\n", caller)
-	ev = p.ev
-	return
+	if i.IsInt64() {
+		return NewInteger(i.Int64())
+	} else {
+		return NewBigInt(&i)
+	}
 }

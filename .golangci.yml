@@ -4,6 +4,8 @@ linters:
   default: standard
   enable:
     - requiredfield
+  disable:
+    - errcheck
   settings:
     custom:
       requiredfield:

@@ -105,24 +105,42 @@ var (
 // the target value. To enable strict mode, which returns an error if any data
 // cannot be mapped, use [DecodeStrict].
 func Decode(r io.Reader, v any) error {
-	decoder := newDecoder(r, false)
-	defer decoder.Destroy()
-	return decoder.Decode(v)
+	doc, err := Parse(r)
+	if err != nil {
+		return err
+	}
+	return UnmarshalDocument(doc, v)
 }
 
 // DecodeStrict is like [Decode] but enables strict mode, which returns an error
 // if any nodes, properties, or arguments cannot be mapped to the target value.
 // It also disables any canonical conversions when unmarshalling values.
 func DecodeStrict(r io.Reader, v any) error {
-	d := newDecoder(r, true)
-	defer d.Destroy()
-	return d.Decode(v)
+	doc, err := Parse(r)
+	if err != nil {
+		return err
+	}
+	return UnmarshalDocumentStrict(doc, v)
 }
 
-// UnmarshalDocument unmarshals the given KDL [Document] into v. See [Decode]
-// for details.
-func UnmarshalDocument(doc *Document, v any) error {
-	return unmarshalDocument(doc, v, false)
+// DecodeNamed is like [Decode] but allows specifying the name of the input
+// source, which is used in error messages and locations.
+func DecodeNamed(name string, r io.Reader, v any) error {
+	doc, err := ParseNamed(name, r)
+	if err != nil {
+		return err
+	}
+	return UnmarshalDocument(doc, v)
+}
+
+// DecodeNamedStrict is like [DecodeStrict] but allows specifying the name of
+// the input source, which is used in error messages and locations.
+func DecodeNamedStrict(name string, r io.Reader, v any) error {
+	doc, err := ParseNamed(name, r)
+	if err != nil {
+		return err
+	}
+	return UnmarshalDocumentStrict(doc, v)
 }
 
 // Unmarshal unmarshals n into v. See [Decode] for details.
@@ -156,33 +174,23 @@ func UnmarshalStrict(n *Node, v any) error {
 	return d.unmarshalNode(n, "", 0, target)
 }
 
+// UnmarshalDocument unmarshals the given KDL [Document] into v. See [Decode]
+// for details.
+func UnmarshalDocument(doc *Document, v any) error {
+	return unmarshalDocument(doc, v, false)
+}
+
+// UnmarshalDocumentStrict unmarshals the given KDL [Document] into v in strict
+// mode, which returns an error if any nodes, properties, or arguments cannot
+// be mapped to the target value. It also disables any canonical conversions
+// when unmarshaling values. See [DecodeStrict] for details.
+func UnmarshalDocumentStrict(doc *Document, v any) error {
+	return unmarshalDocument(doc, v, true)
+}
+
 // a decoder is a KDL decoder.
 type decoder struct {
 	strict bool // required
-	parser *Parser
-}
-
-// newDecoder creates a new decoder that reads from r.
-func newDecoder(r io.Reader, strict bool) *decoder {
-	return &decoder{
-		strict: strict,
-		parser: NewParser(KdlVersionAuto, r),
-	}
-}
-
-// Destroy releases any resources held by the decoder.
-func (d *decoder) Destroy() {
-	d.parser.Destroy()
-}
-
-// Decode reads a KDL document. See [Decode] for details.
-func (d *decoder) Decode(v any) error {
-	doc, err := d.parser.ParseDocument()
-	if err != nil {
-		return err
-	}
-
-	return unmarshalDocument(doc, v, d.strict)
 }
 
 func unmarshalDocument(doc *Document, v any, strict bool) error {
@@ -780,7 +788,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 	// special handling for time.Time and time.Duration
 	if target.Type() == timeType || target.Type() == durationType {
 		if len(node.Arguments) != 1 {
-			return fmt.Errorf("expected exactly one argument (unmarshalling node %q into %s)", node.Name, target.Type())
+			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.Name, target.Type())
 		}
 		return d.unmarshalTime(node.Arguments[0], format, target)
 	}
@@ -789,7 +797,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
 		if len(node.Arguments) != 1 {
-			return fmt.Errorf("expected exactly one argument (unmarshalling node %q into %s)", node.Name, target.Kind())
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.Name, target.Kind())
 		}
 		return d.unmarshalValue(node.Arguments[0], format, target)
 
@@ -837,7 +845,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 	case reflect.Interface:
 		if len(node.Properties) == 0 && len(node.Children.Nodes) == 0 {
 			if len(node.Arguments) != 1 {
-				return fmt.Errorf("expected exactly one argument (unmarshalling node %q into interface)", node.Name)
+				return fmt.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.Name)
 			}
 			return d.unmarshalValueIntoInterface(node.Arguments[0], target)
 		}

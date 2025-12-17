@@ -3,15 +3,7 @@ package kdl
 import (
 	"fmt"
 	"math/big"
-	"unsafe"
 )
-
-// #cgo CFLAGS: -I/usr/local/include
-// #cgo LDFLAGS: -L/usr/local/lib -lkdl
-// #include "kdl.h"
-// #include <stdlib.h>
-// #include <string.h>
-import "C"
 
 func NewString(value string) String         { return String{value: value} }
 func NewInteger(value int64) Integer        { return Integer{value: value} }
@@ -32,8 +24,7 @@ func NewNull() Null                         { return Null{} }
 // One can cast a Value to a specific type for using helpers like [AsString],
 // [AsInt], and [AsPointer].
 type Value interface {
-	c() (C.kdl_value, func())
-	withTypeAnnotation(ty *string) Value
+	WithTypeAnnotation(ty *string) Value
 
 	// RawValue returns the underlying value of the KDL value as an any. It may
 	// be more useful to first cast the Value to a specific KDL type (e.g.,
@@ -148,31 +139,31 @@ func formatTypeAnnotation(ty *string) string {
 	return fmt.Sprintf("(%s)", *ty)
 }
 
-func (s String) withTypeAnnotation(ty *string) Value {
+func (s String) WithTypeAnnotation(ty *string) Value {
 	s.typeAnnotation = ty
 	return s
 }
-func (n Integer) withTypeAnnotation(ty *string) Value {
+func (n Integer) WithTypeAnnotation(ty *string) Value {
 	n.typeAnnotation = ty
 	return n
 }
-func (f Float) withTypeAnnotation(ty *string) Value {
+func (f Float) WithTypeAnnotation(ty *string) Value {
 	f.typeAnnotation = ty
 	return f
 }
-func (b BigInt) withTypeAnnotation(ty *string) Value {
+func (b BigInt) WithTypeAnnotation(ty *string) Value {
 	b.typeAnnotation = ty
 	return b
 }
-func (b BigFloat) withTypeAnnotation(ty *string) Value {
+func (b BigFloat) WithTypeAnnotation(ty *string) Value {
 	b.typeAnnotation = ty
 	return b
 }
-func (b Boolean) withTypeAnnotation(ty *string) Value {
+func (b Boolean) WithTypeAnnotation(ty *string) Value {
 	b.typeAnnotation = ty
 	return b
 }
-func (n Null) withTypeAnnotation(ty *string) Value {
+func (n Null) WithTypeAnnotation(ty *string) Value {
 	n.typeAnnotation = ty
 	return n
 }
@@ -184,129 +175,3 @@ func (b BigInt) TypeAnnotation() *string   { return b.typeAnnotation }
 func (b BigFloat) TypeAnnotation() *string { return b.typeAnnotation }
 func (b Boolean) TypeAnnotation() *string  { return b.typeAnnotation }
 func (n Null) TypeAnnotation() *string     { return n.typeAnnotation }
-
-func newKdlValue(v C.kdl_value) (Value, error) {
-	var x Value
-	switch v._type {
-	case C.KDL_TYPE_NULL:
-		x = Null{}
-	case C.KDL_TYPE_STRING:
-		x = String{value: goString((*C.kdl_str)(unsafe.Pointer(&v.anon0)))}
-	case C.KDL_TYPE_NUMBER:
-		kdlNum := (*C.kdl_number)(unsafe.Pointer(&v.anon0))
-		ptr := unsafe.Pointer(&kdlNum.anon0)
-		switch kdlNum._type {
-		case C.KDL_NUMBER_TYPE_INTEGER:
-			x = Integer{value: int64(*(*C.int64_t)(ptr))}
-		case C.KDL_NUMBER_TYPE_FLOATING_POINT:
-			x = Float{value: float64(*(*C.double)(ptr))}
-		case C.KDL_NUMBER_TYPE_STRING_ENCODED:
-			s := goString((*C.kdl_str)(ptr))
-			if _, ok := new(big.Int).SetString(s, 10); ok {
-				i := new(big.Int)
-				i.SetString(s, 10)
-				x = BigInt{value: i}
-			} else {
-				f := new(big.Float)
-				_, _, err := f.Parse(s, 10)
-				if err != nil {
-					return nil, fmt.Errorf("invalid number format: %q", s)
-				}
-				x = BigFloat{value: f}
-			}
-		}
-	case C.KDL_TYPE_BOOLEAN:
-		b := (*C.bool)(unsafe.Pointer(&v.anon0))
-		x = Boolean{value: bool(*b)}
-	}
-
-	if v.type_annotation.data != nil {
-		bytes := C.GoBytes(unsafe.Pointer(v.type_annotation.data), C.int(v.type_annotation.len))
-		str := string(bytes)
-		x = x.withTypeAnnotation(&str)
-	}
-
-	return x, nil
-}
-
-func withTypeAnnotation(v C.kdl_value, annot *string, free func()) (C.kdl_value, func()) {
-	if annot == nil {
-		return v, func() {
-			if free != nil {
-				free()
-			}
-		}
-	}
-
-	var freeTypeAnnot func()
-	v.type_annotation, freeTypeAnnot = kdlString(*annot)
-	return v, func() {
-		if free != nil {
-			free()
-		}
-		freeTypeAnnot()
-	}
-}
-
-func (s String) c() (C.kdl_value, func()) {
-	str, freeStr := kdlString(s.value)
-	v := C.kdl_value{_type: C.KDL_TYPE_STRING}
-	*(*C.kdl_str)(unsafe.Pointer(&v.anon0)) = str
-
-	return withTypeAnnotation(v, s.typeAnnotation, freeStr)
-}
-
-func (n Integer) c() (C.kdl_value, func()) {
-	number := C.kdl_number{_type: C.KDL_NUMBER_TYPE_INTEGER}
-	*(*C.int64_t)(unsafe.Pointer(&number.anon0)) = C.int64_t(n.value)
-
-	v := C.kdl_value{_type: C.KDL_TYPE_NUMBER}
-	*(*C.kdl_number)(unsafe.Pointer(&v.anon0)) = number
-
-	return withTypeAnnotation(v, n.typeAnnotation, nil)
-}
-
-func (n Float) c() (C.kdl_value, func()) {
-	number := C.kdl_number{_type: C.KDL_NUMBER_TYPE_FLOATING_POINT}
-	*(*C.double)(unsafe.Pointer(&number.anon0)) = C.double(n.value)
-
-	v := C.kdl_value{_type: C.KDL_TYPE_NUMBER}
-	*(*C.kdl_number)(unsafe.Pointer(&v.anon0)) = number
-
-	return withTypeAnnotation(v, n.typeAnnotation, nil)
-}
-
-func (b BigInt) c() (C.kdl_value, func()) {
-	number := C.kdl_number{_type: C.KDL_NUMBER_TYPE_STRING_ENCODED}
-	str, free := kdlString(b.value.String())
-	*(*C.kdl_str)(unsafe.Pointer(&number.anon0)) = str
-
-	v := C.kdl_value{_type: C.KDL_TYPE_NUMBER}
-	*(*C.kdl_number)(unsafe.Pointer(&v.anon0)) = number
-
-	return withTypeAnnotation(v, b.typeAnnotation, free)
-}
-
-func (b BigFloat) c() (C.kdl_value, func()) {
-	number := C.kdl_number{_type: C.KDL_NUMBER_TYPE_STRING_ENCODED}
-	str, free := kdlString(b.value.Text('G', 10))
-	*(*C.kdl_str)(unsafe.Pointer(&number.anon0)) = str
-
-	v := C.kdl_value{_type: C.KDL_TYPE_NUMBER}
-	*(*C.kdl_number)(unsafe.Pointer(&v.anon0)) = number
-
-	return withTypeAnnotation(v, b.typeAnnotation, free)
-}
-
-func (b Boolean) c() (C.kdl_value, func()) {
-	v := C.kdl_value{_type: C.KDL_TYPE_BOOLEAN}
-	*(*C.bool)(unsafe.Pointer(&v.anon0)) = C.bool(b.value)
-
-	return withTypeAnnotation(v, b.typeAnnotation, nil)
-}
-
-func (n Null) c() (C.kdl_value, func()) {
-	kdlNull := C.kdl_value{_type: C.KDL_TYPE_NULL}
-
-	return withTypeAnnotation(kdlNull, n.typeAnnotation, nil)
-}

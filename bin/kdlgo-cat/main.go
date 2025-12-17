@@ -24,14 +24,12 @@ func main() {
 		panic(err)
 	}
 
-	debugWriter := os.Stderr
-	if !*debug {
-		debugWriter = nil
-	}
+	// debugWriter := os.Stderr
+	// if !*debug {
+	// 	debugWriter = nil
+	// }
 
-	p := kdl.NewParser(kdl.KdlVersionAuto, f)
-	p.SetDebug(debugWriter)
-	doc, err := p.ParseDocument()
+	doc, err := kdl.Parse(f)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -42,9 +40,10 @@ func main() {
 		return
 	}
 
-	e := kdl.NewEmitter(kdl.KdlVersion2, os.Stdout)
-	err = e.EmitDocument(doc)
-	if err != nil {
-		panic(err)
-	}
+	// TODO: emitter
+	// e := kdl.NewEmitter(kdl.KdlVersion2, os.Stdout)
+	// err = e.EmitDocument(doc)
+	// if err != nil {
+	// 	panic(err)
+	// }
 }

@@ -32,7 +32,7 @@ type Host struct {
 	Port     int    `kdl:"port"`
 }
 
-func ExampleConfig() {
+func ExampleDecode() {
 	f := strings.NewReader(configKdl)
 
 	var config Config
