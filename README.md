@@ -1,9 +1,11 @@
 # kdl-go
 
-Package kdl is a Go wrapper for [ckdl](https://github.com/tjol/ckdl), a C library for reading and writing KDL documents. It provides a Parser and Emitter for reading and writing KDL documents and a Decode for unmarshaling KDL documents into Go types.
+Package kdl implements a parser and emitter for the [KDL](https://kdl.dev/) document format (version 2 only). It supports reading and writing KDL documents, as well as decoding KDL documents into Go data structures.
+
+This implementation follows the KDL 2.0.0 specification and passes the upstream test suite (see `kdl_test.go`).
 
 > [!Caution]
-> This package's public API is not stable and may change at any time.
+> This package's public 0.x API is not stable yet and may change at any time.
 > Use at your own risk.
 
 ```go
