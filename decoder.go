@@ -195,7 +195,7 @@ type decoder struct {
 
 func unmarshalDocument(doc *Document, v any, strict bool) error {
 	if u, ok := v.(DocumentUnmarshaler); ok {
-		return u.UnmarshalKDLDocument(doc)
+		return u.UnmarshalKDL(doc)
 	}
 
 	target, err := unwrapPointerOrInterface(v)
@@ -272,13 +272,13 @@ func (d *decoder) unmarshalNodesIntoMap(nodes []*Node, target reflect.Value) err
 		return errors.New("map key type must be string when unmarshaling properties")
 	}
 	for _, node := range nodes {
-		key := reflect.ValueOf(node.Name).Convert(target.Type().Key())
+		key := reflect.ValueOf(node.name).Convert(target.Type().Key())
 		value := reflect.New(target.Type().Elem()).Elem()
 		if err := d.unmarshalNode(node, "", 0, value); err != nil {
 			return err
 		}
 		if target.MapIndex(key).IsValid() {
-			return errors.Errorf("duplicate node %q unmarshaling into map", node.Name)
+			return errors.Errorf("duplicate node %q unmarshaling into map", node.name)
 		}
 		target.SetMapIndex(key, value)
 	}
@@ -324,19 +324,17 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, targetStruct ref
 			return err
 		}
 
-		if index == -1 {
-			if d.strict {
-				return errors.Wrapf(ErrStrict, "no matching field found for node %q", node.Name)
-			}
-		} else {
-			delete(unusedFields, index)
+		if index != -1 {
 			noneFound = false
+			delete(unusedFields, index)
+		} else if d.strict {
+			return errors.Wrapf(ErrStrict, "no matching field found for node %q", node.name)
 		}
 	}
 
 	// TODO: decide if this condition is desirable, also outside strict mode?
 	if noneFound && len(nodes) > 0 && structType.NumField() > 0 {
-		return errors.New("no matching fields found for any nodes")
+		return errors.Errorf("%s: no matching fields found for any nodes unmarshaling into struct %s", nodes[0].loc, structType)
 	}
 
 	if len(unusedFields) > 0 && d.strict {
@@ -360,7 +358,7 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, targetStruct ref
 // index of the field is returned. If no matching field is found, -1 is
 // returned.
 func (d *decoder) unmarshalNodeIntoStructField(node *Node, tags []structTag, targetStruct reflect.Value) (index int, err error) {
-	nodeName := node.Name
+	nodeName := node.name
 	if targetStruct.Kind() == reflect.Pointer {
 		if targetStruct.IsNil() {
 			targetStruct.Set(reflect.New(targetStruct.Type().Elem()))
@@ -470,28 +468,28 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value
 	for argumentNum, i := range argumentFields {
 		field := targetStruct.Field(i)
 		format := structTags[i].format
-		if argumentNum >= len(node.Arguments) {
-			return errors.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.Location, argumentNum+1, node.Name, structType)
+		if argumentNum >= len(node.args) {
+			return errors.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.loc, argumentNum+1, node.name, structType)
 		}
-		if err := d.unmarshalValue(node.Arguments[argumentNum], format, field); err != nil {
+		if err := d.unmarshalValue(node.args[argumentNum], format, field); err != nil {
 			return err
 		}
 	}
 
-	if len(node.Arguments) > len(argumentFields) && argumentsField == -1 && d.strict {
-		return errors.Wrapf(ErrStrict, "too many arguments (%d provided, %d expected)", len(node.Arguments), len(argumentFields))
+	if len(node.args) > len(argumentFields) && argumentsField == -1 && d.strict {
+		return errors.Wrapf(ErrStrict, "too many arguments (%d provided, %d expected)", len(node.args), len(argumentFields))
 	}
 
 	if argumentsField != -1 {
 		field := targetStruct.Field(argumentsField)
 		format := structTags[argumentsField].format
-		unusedArguments := node.Arguments[len(argumentFields):]
+		unusedArguments := node.args[len(argumentFields):]
 		if err := d.unmarshalValues(unusedArguments, format, field); err != nil {
 			return err
 		}
 	}
 
-	for propName, propValue := range node.Properties {
+	for propName, propValue := range node.props {
 		found := false
 		for i := 0; i < structType.NumField(); i++ {
 			tag := structTags[i]
@@ -513,30 +511,30 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value
 		field := targetStruct.Field(propertiesField)
 		format := structTags[propertiesField].format
 		unusedProperties := make(map[string]Value)
-		for propName, propValue := range node.Properties {
+		for propName, propValue := range node.props {
 			if _, ok := usedProperties[propName]; !ok {
 				unusedProperties[propName] = propValue
 			}
 		}
-		if err := d.unmarshalPropertiesField(node.Location, unusedProperties, format, field); err != nil {
+		if err := d.unmarshalPropertiesField(node.loc, unusedProperties, format, field); err != nil {
 			return err
 		}
 	}
 
-	for i, node := range node.Children.Nodes {
+	for i, node := range node.children.Nodes {
 		if index, err := d.unmarshalNodeIntoStructField(node, structTags, targetStruct); err != nil {
 			return err
-		} else if index == -1 && childrenField == -1 && d.strict {
-			return errors.Wrapf(ErrStrict, "no matching field found for node %q", node.Name)
-		} else {
+		} else if index != -1 {
 			usedChildren[i] = struct{}{}
+		} else if childrenField == -1 && d.strict {
+			return errors.Wrapf(ErrStrict, "no matching field found for node %q", node.name)
 		}
 	}
 
 	if childrenField != -1 {
 		field := targetStruct.Field(childrenField)
-		unusedChildren := make([]*Node, 0, len(node.Children.Nodes)-len(usedChildren))
-		for i, child := range node.Children.Nodes {
+		unusedChildren := make([]*Node, 0, len(node.children.Nodes)-len(usedChildren))
+		for i, child := range node.children.Nodes {
 			if _, ok := usedChildren[i]; !ok {
 				unusedChildren = append(unusedChildren, child)
 			}
@@ -545,13 +543,13 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, targetStruct reflect.Value
 	}
 
 	// if we didn't unmarshal anything, it's an error
-	if (len(node.Children.Nodes) > 0 ||
-		len(node.Properties) > 0 ||
-		len(node.Arguments) > 0) &&
+	if (len(node.children.Nodes) > 0 ||
+		len(node.props) > 0 ||
+		len(node.args) > 0) &&
 		len(usedProperties) == 0 &&
 		len(usedChildren) == 0 &&
 		len(argumentFields) == 0 && argumentsField == -1 && propertiesField == -1 && childrenField == -1 {
-		return fmt.Errorf("don't know what to do with node %q unmarshaling into struct %s", node.Name, structType)
+		return fmt.Errorf("don't know what to do with node %q unmarshaling into struct %s", node.name, structType)
 	}
 
 	return nil
@@ -727,13 +725,13 @@ func (d *decoder) unmarshalChildrenField(children []*Node, target reflect.Value)
 			return errors.New("map key type must be string when unmarshaling properties")
 		}
 		for _, child := range children {
-			key := reflect.ValueOf(child.Name).Convert(target.Type().Key())
+			key := reflect.ValueOf(child.name).Convert(target.Type().Key())
 			value := reflect.New(target.Type().Elem()).Elem()
 			if err := d.unmarshalNode(child, "", 0, value); err != nil {
 				return err
 			}
 			if target.MapIndex(key).IsValid() {
-				return errors.Errorf("%s: duplicate child %q unmarshaling into map", child.Location, child.Name)
+				return errors.Errorf("%s: duplicate child %q unmarshaling into map", child.loc, child.name)
 			}
 			target.SetMapIndex(key, value)
 		}
@@ -786,21 +784,35 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		return nil
 	}
 
+	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[ValueUnmarshaler]()) {
+		if len(node.args) != 1 {
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
+		}
+		u := reflect.New(target.Type())
+		err := u.Interface().(ValueUnmarshaler).UnmarshalKDL(node.args[0])
+		if err != nil {
+			return err
+		}
+		target.Set(u.Elem())
+		return nil
+	}
+
 	// special handling for time.Time and time.Duration
 	if target.Type() == timeType || target.Type() == durationType {
-		if len(node.Arguments) != 1 {
-			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.Name, target.Type())
+		if len(node.args) != 1 {
+			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
-		return d.unmarshalTime(node.Arguments[0], format, target)
+		return d.unmarshalTime(node.args[0], format, target)
 	}
 
 	switch target.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
-		if len(node.Arguments) != 1 {
-			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.Name, target.Kind())
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
+		reflect.Bool:
+		if len(node.args) != 1 {
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Kind())
 		}
-		return d.unmarshalValue(node.Arguments[0], format, target)
+		return d.unmarshalValue(node.args[0], format, target)
 
 	case reflect.Struct:
 		return d.unmarshalNodeIntoStruct(node, target)
@@ -819,9 +831,9 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 			return nil
 		} else {
 			if target.IsNil() {
-				target.Set(reflect.MakeSlice(target.Type(), len(node.Arguments), len(node.Arguments)))
+				target.Set(reflect.MakeSlice(target.Type(), len(node.args), len(node.args)))
 			}
-			for i, arg := range node.Arguments {
+			for i, arg := range node.args {
 				if err := d.unmarshalValue(arg, format, target.Index(i)); err != nil {
 					return err
 				}
@@ -833,10 +845,10 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		if flags&multiple != 0 {
 			panic("unimplemented: multiple flag on array type")
 		}
-		if len(node.Arguments) != target.Len() {
+		if len(node.args) != target.Len() {
 			return errors.Errorf("expected exactly %d arguments", target.Len())
 		}
-		for i, arg := range node.Arguments {
+		for i, arg := range node.args {
 			if err := d.unmarshalValue(arg, format, target.Index(i)); err != nil {
 				return err
 			}
@@ -844,15 +856,15 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		return nil
 
 	case reflect.Interface:
-		if len(node.Properties) == 0 && len(node.Children.Nodes) == 0 {
-			if len(node.Arguments) != 1 {
-				return fmt.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.Name)
+		if len(node.props) == 0 && len(node.children.Nodes) == 0 {
+			if len(node.args) != 1 {
+				return fmt.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.name)
 			}
-			return d.unmarshalValueIntoInterface(node.Arguments[0], target)
+			return d.unmarshalValueIntoInterface(node.args[0], target)
 		}
 
 		if target.NumMethod() != 0 {
-			return fmt.Errorf("cannot unmarshal node %q into non-empty interface", node.Name)
+			return fmt.Errorf("cannot unmarshal node %q into non-empty interface", node.name)
 		}
 
 		m := reflect.ValueOf(map[string]any{})
@@ -871,12 +883,12 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 			return errors.New("map key type must be string, integer, or unsigned integer")
 		}
 
-		hasArguments := len(node.Arguments) > 0
-		hasProperties := len(node.PropertyOrder) > 0
-		hasChildren := len(node.Children.Nodes) > 0
+		hasArguments := len(node.args) > 0
+		hasProperties := len(node.propOrder) > 0
+		hasChildren := len(node.children.Nodes) > 0
 
 		if hasArguments {
-			err := d.unmarshalValues(node.Arguments, format, target)
+			err := d.unmarshalValues(node.args, format, target)
 			if err != nil {
 				return err
 			}
@@ -886,10 +898,10 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 			if !hasStringKeys {
 				return errors.New("map key type must be string when unmarshaling properties")
 			}
-			for _, prop := range node.PropertyOrder {
+			for _, prop := range node.propOrder {
 				key := reflect.ValueOf(prop).Convert(target.Type().Key())
 				value := reflect.New(target.Type().Elem()).Elem()
-				if err := d.unmarshalValue(node.Properties[prop], format, value); err != nil {
+				if err := d.unmarshalValue(node.props[prop], format, value); err != nil {
 					return err
 				}
 				target.SetMapIndex(key, value)
@@ -901,8 +913,8 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 				return errors.New("map key type must be string when unmarshaling children")
 			}
 
-			for _, child := range node.Children.Nodes {
-				key := reflect.ValueOf(child.Name).Convert(target.Type().Key())
+			for _, child := range node.children.Nodes {
+				key := reflect.ValueOf(child.name).Convert(target.Type().Key())
 				value := reflect.New(target.Type().Elem()).Elem()
 				if err := d.unmarshalNode(child, "", 0, value); err != nil {
 					return err
@@ -912,7 +924,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 		}
 		return nil
 	default:
-		return errors.Errorf("cannot unmarshal node %q into %s", node.Name, target.Type())
+		return errors.Errorf("cannot unmarshal node %q into %s", node.name, target.Type())
 	}
 }
 
@@ -923,7 +935,7 @@ func (d *decoder) unmarshalNode(node *Node, format string, flags tagFlags, targe
 func (d *decoder) unmarshalValue(value Value, format string, target reflect.Value) error {
 	if target.Type().NumMethod() > 0 && target.CanInterface() {
 		if u, ok := target.Interface().(ValueUnmarshaler); ok {
-			return u.UnmarshalKDLValue(value)
+			return u.UnmarshalKDL(value)
 		}
 	}
 

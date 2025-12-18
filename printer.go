@@ -61,22 +61,22 @@ func (p *Printer) PrintNode(node *Node) {
 		p.print("\n(node nil)")
 		return
 	}
-	p.printf("\n(node \"%s\"", node.Name)
+	p.printf("\n(node \"%s\"", node.name)
 	p.indent++
-	if node.TypeAnnotation != nil {
-		p.printf("\n(type \"%s\")", *node.TypeAnnotation)
+	if ty, ok := node.TypeAnnotation(); ok {
+		p.printf("\n(type \"%s\")", ty)
 	}
-	for _, arg := range node.Arguments {
+	for _, arg := range node.Arguments() {
 		p.print("\n(argument ")
 		p.PrintValue(arg)
 		p.print(")")
 	}
-	for _, prop := range node.PropertyOrder {
+	for _, prop := range node.PropertyOrder() {
 		p.printf("\n(property \"%s\" ", prop)
-		p.PrintValue(node.Properties[prop])
+		p.PrintValue(node.Properties()[prop])
 		p.print(")")
 	}
-	for _, child := range node.Children.Nodes {
+	for _, child := range node.Children().Nodes {
 		p.PrintNode(child)
 	}
 	p.indent--
@@ -84,29 +84,29 @@ func (p *Printer) PrintNode(node *Node) {
 }
 
 func (p *Printer) PrintValue(v Value) {
-	switch v := v.(type) {
+	switch v.Kind() {
 	case String:
-		p.printf("(string \"%s\"", v.value)
-	case Integer:
-		p.printf("(integer %d", v.value)
+		p.printf("(string %q", v.String())
+	case Int:
+		p.printf("(integer %d", v.Int())
 	case Float:
-		p.printf("(float %f", v.value)
+		p.printf("(float %f", v.Float())
 	case BigInt:
-		p.printf("(bigint %s", v.value.String())
+		p.printf("(bigint %s", v.BigInt().String())
 	case BigFloat:
-		p.printf("(bigfloat %s", v.value.String())
-	case Boolean:
-		p.printf("(boolean %t", v.value)
+		p.printf("(bigfloat %s", v.BigFloat().String())
+	case Bool:
+		p.printf("(boolean %t", v.Bool())
 	case Null:
 		p.print("(null")
 	default:
-		p.printf("(unknown %T", v)
+		p.printf("(unknown %s", v)
 	}
 
-	typeAnnot := v.TypeAnnotation()
-	if typeAnnot != nil {
+	typeAnnot, ok := v.TypeAnnotation()
+	if ok {
 		p.indent++
-		p.printf("\n(type \"%s\")", *typeAnnot)
+		p.printf("\n(type \"%s\")", typeAnnot)
 		p.indent--
 	}
 	p.print(")")

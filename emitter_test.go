@@ -99,8 +99,8 @@ func TestEmitFloat(t *testing.T) {
 			doc := &Document{
 				Nodes: []*Node{
 					{
-						Name:      "node",
-						Arguments: []Value{tt.val},
+						name: "node",
+						args: []Value{tt.val},
 					},
 				},
 			}
@@ -120,12 +120,12 @@ func TestEmitStringAlwaysQuote(t *testing.T) {
 	doc := &Document{
 		Nodes: []*Node{
 			{
-				Name:      "node",
-				Arguments: []Value{NewString("simple")},
+				name: "node",
+				args: []Value{NewString("simple")},
 			},
 			{
-				Name:      "node2",
-				Arguments: []Value{NewString("")},
+				name: "node2",
+				args: []Value{NewString("")},
 			},
 		},
 	}

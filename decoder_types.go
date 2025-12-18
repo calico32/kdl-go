@@ -14,25 +14,25 @@ import (
 // outside of strict mode.
 func (d *decoder) unmarshalString(v Value, target reflect.Value) error {
 	if d.strict {
-		if s, ok := v.(String); ok {
-			target.SetString(s.value)
+		if v.Kind() == String {
+			target.SetString(v.String())
 			return nil
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into string", v)
 	}
-	switch v := v.(type) {
+	switch v.Kind() {
 	case String:
-		target.SetString(v.value)
-	case Integer:
-		target.SetString(strconv.FormatInt(v.value, 10))
+		target.SetString(v.String())
+	case Int:
+		target.SetString(strconv.FormatInt(int64(v.Int()), 10))
 	case Float:
-		target.SetString(strconv.FormatFloat(v.value, 'f', -1, 64))
+		target.SetString(strconv.FormatFloat(v.Float(), 'f', -1, 64))
 	case BigInt:
-		target.SetString(v.value.String())
+		target.SetString(v.BigInt().String())
 	case BigFloat:
-		target.SetString(v.value.String())
-	case Boolean:
-		target.SetString(strconv.FormatBool(v.value))
+		target.SetString(v.BigFloat().String())
+	case Bool:
+		target.SetString(strconv.FormatBool(v.Bool()))
 	case Null:
 		target.SetString("")
 	default:
@@ -45,50 +45,38 @@ func (d *decoder) unmarshalString(v Value, target reflect.Value) error {
 // outside of strict mode.
 func (d *decoder) unmarshalInt(v Value, target reflect.Value) error {
 	if d.strict {
-		if i, ok := v.(Integer); ok {
-			return d.setInt(target, i.value)
-		}
-		if i, ok := v.(BigInt); ok {
-			return d.setInt(target, i.value.Int64())
+		switch v.Kind() {
+		case Int:
+			return d.setInt(target, int64(v.Int()))
+		case BigInt:
+			if !v.BigInt().IsInt64() {
+				return errors.Errorf("bigint value %s overflows int64", v.BigInt().String())
+			}
+			return d.setInt(target, v.BigInt().Int64())
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into int", v)
 	}
-	switch v := v.(type) {
-	case Integer:
-		return d.setInt(target, v.value)
+	switch v.Kind() {
+	case Int:
+		return d.setInt(target, int64(v.Int()))
 	case Float:
-		return d.setInt(target, int64(v.value))
+		return d.setInt(target, int64(v.Float()))
 	case BigInt:
-		return d.setInt(target, v.value.Int64())
+		return d.setInt(target, v.BigInt().Int64())
 	case BigFloat:
-		i, _ := v.value.Int64()
+		i, _ := v.BigFloat().Int64()
 		return d.setInt(target, i)
-	case Boolean:
-		if v.value {
+	case Bool:
+		if v.Bool() {
 			return d.setInt(target, 1)
 		} else {
 			return d.setInt(target, 0)
 		}
 	case String:
 		// try to parse the string as an int
-		value := v.value
-		base := 10
-		if len(v.value) > 2 && v.value[0] == '0' {
-			switch v.value[1] {
-			case 'x', 'X':
-				base = 16
-				value = v.value[2:]
-			case 'b', 'B':
-				base = 2
-				value = v.value[2:]
-			case 'o', 'O':
-				base = 8
-				value = v.value[2:]
-			}
-		}
-		i, err := strconv.ParseInt(value, base, 64)
+		i, err := strconv.ParseInt(v.String(), 0, 64)
 		if err != nil {
-			return errors.Wrapf(err, "cannot unmarshal %q into integer", v.value)
+			return errors.Wrapf(err, "cannot unmarshal %q into integer", v.String())
 		}
 		return d.setInt(target, i)
 	case Null:
@@ -113,52 +101,56 @@ func (d *decoder) setInt(target reflect.Value, value int64) error {
 // as needed outside of strict mode.
 func (d *decoder) unmarshalUint(v Value, target reflect.Value) error {
 	if d.strict {
-		if i, ok := v.(Integer); ok {
-			if i.value < 0 {
-				return errors.Errorf("cannot unmarshal negative integer %d into uint", i.value)
+		switch v.Kind() {
+		case Int:
+			if v.Int() < 0 {
+				return errors.Errorf("cannot unmarshal negative integer %d into uint", v.Int())
 			}
-			return d.setUint(target, uint64(i.value))
-		}
-		if i, ok := v.(BigInt); ok {
-			if i.value.Sign() < 0 {
-				return errors.Errorf("cannot unmarshal negative bigint %s into uint", i.value.String())
+			return d.setUint(target, uint64(v.Int()))
+		case BigInt:
+			if v.BigInt().Sign() < 0 {
+				return errors.Errorf("cannot unmarshal negative bigint %s into uint", v.BigInt().String())
 			}
-			return d.setUint(target, uint64(i.value.Int64()))
+			return d.setUint(target, uint64(v.BigInt().Int64()))
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into uint", v)
 	}
-	switch v := v.(type) {
-	case Integer:
-		if v.value < 0 {
-			return errors.Errorf("cannot unmarshal negative integer %d into uint", v.value)
-		}
-		return d.setUint(target, uint64(v.value))
-	case Float:
-		if v.value < 0 {
-			return errors.Errorf("cannot unmarshal negative float %f into uint", v.value)
-		}
-		return d.setUint(target, uint64(v.value))
-	case BigInt:
-		if v.value.Sign() < 0 {
-			return errors.Errorf("cannot unmarshal negative bigint %s into uint", v.value.String())
-		}
-		return d.setUint(target, uint64(v.value.Int64()))
-	case BigFloat:
-		i, _ := v.value.Int64()
+	switch v.Kind() {
+	case Int:
+		i := v.Int()
 		if i < 0 {
-			return errors.Errorf("cannot unmarshal negative bigfloat %s into uint", v.value.String())
+			return errors.Errorf("cannot unmarshal negative integer %d into uint", i)
 		}
 		return d.setUint(target, uint64(i))
-	case Boolean:
-		if v.value {
+	case Float:
+		f := v.Float()
+		if f < 0 {
+			return errors.Errorf("cannot unmarshal negative float %f into uint", f)
+		}
+		return d.setUint(target, uint64(f))
+	case BigInt:
+		bi := v.BigInt()
+		if bi.Sign() < 0 {
+			return errors.Errorf("cannot unmarshal negative bigint %s into uint", bi.String())
+		}
+		return d.setUint(target, uint64(bi.Int64()))
+	case BigFloat:
+		bf := v.BigFloat()
+		i, _ := bf.Int64()
+		if i < 0 {
+			return errors.Errorf("cannot unmarshal negative bigfloat %s into uint", bf.String())
+		}
+		return d.setUint(target, uint64(i))
+	case Bool:
+		if v.Bool() {
 			return d.setUint(target, 1)
 		} else {
 			return d.setUint(target, 0)
 		}
 	case String:
-		u, err := strconv.ParseUint(v.value, 10, 64)
+		u, err := strconv.ParseUint(v.String(), 0, 64)
 		if err != nil {
-			return errors.Wrapf(err, "cannot unmarshal %q into unsigned integer", v.value)
+			return errors.Wrapf(err, "cannot unmarshal %q into unsigned integer", v.String())
 		}
 		return d.setUint(target, u)
 	case Null:
@@ -183,39 +175,39 @@ func (d *decoder) setUint(target reflect.Value, value uint64) error {
 // outside of strict mode.
 func (d *decoder) unmarshalFloat(v Value, target reflect.Value) error {
 	if d.strict {
-		if f, ok := v.(Float); ok {
-			target.SetFloat(f.value)
+		switch v.Kind() {
+		case Float:
+			target.SetFloat(v.Float())
 			return nil
-		}
-		if f, ok := v.(BigFloat); ok {
-			f64, _ := f.value.Float64()
+		case BigFloat:
+			f64, _ := v.BigFloat().Float64()
 			target.SetFloat(f64)
 			return nil
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into float", v)
 	}
-	switch v := v.(type) {
-	case Integer:
-		target.SetFloat(float64(v.value))
+	switch v.Kind() {
+	case Int:
+		target.SetFloat(float64(v.Int()))
 	case Float:
-		target.SetFloat(v.value)
+		target.SetFloat(v.Float())
 	case BigInt:
-		f, _ := v.value.Float64()
+		f, _ := v.BigInt().Float64()
 		target.SetFloat(f)
 	case BigFloat:
-		f, _ := v.value.Float64()
+		f, _ := v.BigFloat().Float64()
 		target.SetFloat(f)
-	case Boolean:
-		if v.value {
+	case Bool:
+		if v.Bool() {
 			target.SetFloat(1)
 		} else {
 			target.SetFloat(0)
 		}
 	case String:
 		// try to parse the string as a float
-		f, err := strconv.ParseFloat(v.value, 64)
+		f, err := strconv.ParseFloat(v.String(), 64)
 		if err != nil {
-			return errors.Wrapf(err, "cannot unmarshal %q into float", v.value)
+			return errors.Wrapf(err, "cannot unmarshal %q into float", v.String())
 		}
 		target.SetFloat(f)
 	case Null:
@@ -230,32 +222,32 @@ func (d *decoder) unmarshalFloat(v Value, target reflect.Value) error {
 // outside of strict mode.
 func (d *decoder) unmarshalBool(v Value, target reflect.Value) error {
 	if d.strict {
-		if b, ok := v.(Boolean); ok {
-			target.SetBool(b.value)
+		if v.Kind() == Bool {
+			target.SetBool(v.Bool())
 			return nil
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into bool", v)
 	}
-	switch v := v.(type) {
-	case Boolean:
-		target.SetBool(v.value)
-	case Integer:
-		target.SetBool(v.value != 0)
+	switch v.Kind() {
+	case Bool:
+		target.SetBool(v.Bool())
+	case Int:
+		target.SetBool(v.Int() != 0)
 	case Float:
-		target.SetBool(v.value != 0)
+		target.SetBool(v.Float() != 0)
 	case BigInt:
-		target.SetBool(v.value.Sign() != 0)
+		target.SetBool(v.BigInt().Sign() != 0)
 	case BigFloat:
-		i, _ := v.value.Int64()
+		i, _ := v.BigFloat().Int64()
 		target.SetBool(i != 0)
 	case String:
-		switch v.value {
+		switch v.String() {
 		case "1", "t", "T", "true", "TRUE", "True", "y", "Y", "yes", "YES", "Yes":
 			target.SetBool(true)
 		case "0", "f", "F", "false", "FALSE", "False", "n", "N", "no", "NO", "No":
 			target.SetBool(false)
 		default:
-			return errors.Errorf("cannot unmarshal %q into bool", v.value)
+			return errors.Errorf("cannot unmarshal %q into bool", v.String())
 		}
 	case Null:
 		target.SetBool(false)
@@ -269,44 +261,42 @@ func (d *decoder) unmarshalBool(v Value, target reflect.Value) error {
 // outside of strict mode.
 func (d *decoder) unmarshalBigInt(v Value, target reflect.Value) error {
 	// targetField is a pointer to a big.Int
-	set := func(i int64) {
-		target.MethodByName("SetInt64").Call([]reflect.Value{reflect.ValueOf(i)})
-	}
+	bi := target.Interface().(*big.Int)
 	if d.strict {
-		if i, ok := v.(Integer); ok {
-			set(i.value)
+		switch v.Kind() {
+		case Int:
+			bi.SetInt64(int64(v.Int()))
 			return nil
-		}
-		if i, ok := v.(BigInt); ok {
-			target.MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(i.value)})
+		case BigInt:
+			bi.Set(v.BigInt())
 			return nil
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into big.Int", v)
 	}
-	switch v := v.(type) {
-	case Integer:
-		set(v.value)
+	switch v.Kind() {
+	case Int:
+		bi.SetInt64(int64(v.Int()))
 	case Float:
-		set(int64(v.value))
+		bi.SetInt64(int64(v.Float()))
 	case BigInt:
-		target.MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(v.value)})
+		bi.Set(v.BigInt())
 	case BigFloat:
-		i, _ := v.value.Int64()
-		set(i)
-	case Boolean:
-		if v.value {
-			set(1)
+		i, _ := v.BigFloat().Int64()
+		bi.SetInt64(i)
+	case Bool:
+		if v.Bool() {
+			bi.SetInt64(1)
 		} else {
-			set(0)
+			bi.SetInt64(0)
 		}
 	case String:
-		i, ok := new(big.Int).SetString(v.value, 10)
+		i, ok := new(big.Int).SetString(v.String(), 10)
 		if !ok {
-			return errors.Errorf("cannot unmarshal %q into big.Int", v.value)
+			return errors.Errorf("cannot unmarshal %q into big.Int", v.String())
 		}
-		target.MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(i)})
+		bi.Set(i)
 	case Null:
-		set(0)
+		bi.SetInt64(0)
 	default:
 		return errors.Errorf("cannot unmarshal %T into big.Int", v)
 	}
@@ -318,44 +308,41 @@ func (d *decoder) unmarshalBigInt(v Value, target reflect.Value) error {
 // outside of strict mode.
 func (d *decoder) unmarshalBigFloat(v Value, target reflect.Value) error {
 	// targetField is a pointer to a big.Float
-	set := func(f float64) {
-		target.MethodByName("SetFloat64").Call([]reflect.Value{reflect.ValueOf(f)})
-	}
+	bf := target.Interface().(*big.Float)
 	if d.strict {
-		if f, ok := v.(Float); ok {
-			set(f.value)
+		switch v.Kind() {
+		case Float:
+			bf.SetFloat64(v.Float())
 			return nil
-		}
-		if f, ok := v.(BigFloat); ok {
-			target.MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(f.value)})
+		case BigFloat:
+			bf.Set(v.BigFloat())
 			return nil
 		}
 		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into big.Float", v)
 	}
-	switch v := v.(type) {
-	case Integer:
-		set(float64(v.value))
+	switch v.Kind() {
+	case Int:
+		bf.SetInt64(int64(v.Int()))
 	case Float:
-		set(v.value)
+		bf.SetFloat64(v.Float())
 	case BigInt:
-		f, _ := v.value.Float64()
-		set(f)
+		bf.SetInt(v.BigInt())
 	case BigFloat:
-		target.MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(v.value)})
-	case Boolean:
-		if v.value {
-			set(1)
+		bf.Set(v.BigFloat())
+	case Bool:
+		if v.Bool() {
+			bf.SetFloat64(1)
 		} else {
-			set(0)
+			bf.SetFloat64(0)
 		}
 	case String:
-		f, ok := new(big.Float).SetString(v.value)
+		f, ok := new(big.Float).SetString(v.String())
 		if !ok {
-			return errors.Errorf("cannot unmarshal %q into big.Float", v.value)
+			return errors.Errorf("cannot unmarshal %q into big.Float", v.String())
 		}
-		target.MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(f)})
+		bf.Set(f)
 	case Null:
-		set(0)
+		bf.SetFloat64(0)
 	default:
 		return errors.Errorf("cannot unmarshal %T into big.Float", v)
 	}
@@ -379,17 +366,17 @@ func (d *decoder) unmarshalTime(v Value, format string, target reflect.Value) er
 
 	var t time.Time
 	var err error
-	switch v := v.(type) {
+	switch v.Kind() {
 	case String:
-		t, err = parseTime(base, format, v.value)
-	case Integer:
-		t, err = parseTimeUnix([]byte(strconv.FormatInt(v.value, 10)), base)
+		t, err = parseTime(base, format, v.String())
+	case Int:
+		t, err = parseTimeUnix([]byte(strconv.FormatInt(int64(v.Int()), 10)), base)
 	case Float:
-		t, err = parseTimeUnix([]byte(strconv.FormatFloat(v.value, 'f', -1, 64)), base)
+		t, err = parseTimeUnix([]byte(strconv.FormatFloat(v.Float(), 'f', -1, 64)), base)
 	case BigInt:
-		t, err = parseTimeUnix([]byte(v.value.String()), base)
+		t, err = parseTimeUnix([]byte(v.BigInt().String()), base)
 	case BigFloat:
-		t, err = parseTimeUnix([]byte(v.value.String()), base)
+		t, err = parseTimeUnix([]byte(v.BigFloat().String()), base)
 	case Null:
 		// zero time
 	default:
@@ -427,17 +414,17 @@ func (d *decoder) unmarshalDuration(v Value, format string, target reflect.Value
 
 	var td time.Duration
 	var err error
-	switch v := v.(type) {
+	switch v.Kind() {
 	case String:
-		td, err = parseDuration(base, v.value)
-	case Integer:
-		td, err = parseDurationBase10([]byte(strconv.FormatInt(v.value, 10)), base)
+		td, err = parseDuration(base, v.String())
+	case Int:
+		td, err = parseDurationBase10([]byte(strconv.FormatInt(int64(v.Int()), 10)), base)
 	case Float:
-		td, err = parseDurationBase10([]byte(strconv.FormatFloat(v.value, 'f', -1, 64)), base)
+		td, err = parseDurationBase10([]byte(strconv.FormatFloat(v.Float(), 'f', -1, 64)), base)
 	case BigInt:
-		td, err = parseDurationBase10([]byte(v.value.String()), base)
+		td, err = parseDurationBase10([]byte(v.BigInt().String()), base)
 	case BigFloat:
-		td, err = parseDurationBase10([]byte(v.value.String()), base)
+		td, err = parseDurationBase10([]byte(v.BigFloat().String()), base)
 	case Null:
 		// zero duration
 	default:
@@ -459,8 +446,8 @@ func (d *decoder) unmarshalDuration(v Value, format string, target reflect.Value
 func (d *decoder) unmarshalValueIntoInterface(v Value, target reflect.Value) error {
 	val := reflect.ValueOf(v.RawValue())
 	// special case: if unmarshaling an int into any, prefer int over int64
-	if intVal, ok := v.(Integer); ok && intVal.value <= math.MaxInt {
-		target.Set(reflect.ValueOf(int(intVal.value)))
+	if v.Kind() == Int && v.Int() <= math.MaxInt {
+		target.Set(reflect.ValueOf(v.Int()))
 		return nil
 	}
 

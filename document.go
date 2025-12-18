@@ -1,16 +1,11 @@
 package kdl
 
-import "errors"
-
-var (
-	ErrNotFound = errors.New("no such key")
-)
-
 // A Document is a collection of nodes.
 type Document struct {
 	Nodes []*Node
 }
 
+// NewDocument creates a new KDL document with the given nodes.
 func NewDocument(nodes ...*Node) *Document {
 	return &Document{Nodes: nodes}
 }
@@ -33,7 +28,7 @@ func (d *Document) AddNodes(nodes ...*Node) *Document {
 // If no such node exists, it returns nil.
 func (d *Document) GetNode(name string) *Node {
 	for _, child := range d.Nodes {
-		if child.Name == name {
+		if child.name == name {
 			return child
 		}
 	}
@@ -48,7 +43,7 @@ func (d *Document) GetNode(name string) *Node {
 func (d *Document) GetNodes(name string) []*Node {
 	children := make([]*Node, 0, len(d.Nodes))
 	for _, child := range d.Nodes {
-		if child.Name == name {
+		if child.name == name {
 			children = append(children, child)
 		}
 	}

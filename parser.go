@@ -3,7 +3,6 @@ package kdl
 import (
 	"fmt"
 	"io"
-	"math"
 	"math/big"
 	"strings"
 
@@ -11,26 +10,44 @@ import (
 )
 
 // Parse parses a KDL document from the provided reader and returns it.
-func Parse(r io.Reader) (*Document, error) {
+func Parse(r io.Reader, opts ...ParseOption) (*Document, error) {
 	return ParseNamed("<input>", r)
 }
 
 // ParseNamed is like [Parse], but allows specifying a name for the input
 // source. Nodes and errors will reference this name in their locations.
-func ParseNamed(name string, r io.Reader) (*Document, error) {
+func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error) {
 	src, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
 	l := newLexer(name, src, nil)
 	p := newParser(l, nil)
+	for _, opt := range opts {
+		opt(p)
+	}
 	return p.ParseDocument()
+}
+
+type ParseOption func(*parser)
+
+func WithParseTrace(w io.Writer) ParseOption {
+	return func(p *parser) {
+		p.trace = w
+	}
+}
+
+func WithLocations(v bool) ParseOption {
+	return func(p *parser) {
+		p.withLocations = v
+	}
 }
 
 func newParser(lex *lexer, trace io.Writer) *parser {
 	p := &parser{
-		lexer: lex,
-		trace: trace,
+		lexer:         lex,
+		trace:         trace,
+		withLocations: true,
 	}
 	lex.AddErrorHandler(func(pos Pos, err error) {
 		p.errors = append(p.errors, errors.Wrapf(err, "lex error at %s", p.lexer.File().Location(pos)))
@@ -41,11 +58,12 @@ func newParser(lex *lexer, trace io.Writer) *parser {
 }
 
 type parser struct {
-	lexer     *lexer
-	token     token
-	nextToken token
-	errors    []error
-	trace     io.Writer
+	lexer         *lexer
+	token         token
+	nextToken     token
+	errors        []error
+	trace         io.Writer
+	withLocations bool
 }
 
 func (p *parser) errorf(pos Pos, format string, args ...any) {
@@ -141,7 +159,7 @@ func (p *parser) readSlashdash() {
 //	node-terminator := single-line-comment | newline | ';' | eof
 func (p *parser) parseNode(allowSlashdash bool) *Node {
 	n := &Node{
-		Properties: make(map[string]Value),
+		props: make(map[string]Value),
 	}
 	if allowSlashdash && p.token.Type == tokenSlashdash {
 		p.readSlashdash()
@@ -149,12 +167,14 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 		return nil
 	}
 	if p.token.Type == tokenLParen {
-		typ := p.parseType()
-		n.TypeAnnotation = &typ
+		n.ty = p.parseType()
+		n.typeValid = true
 	}
 	p.skipNodeSpace()
-	n.Location = p.lexer.File().Location(p.token.Pos)
-	n.Name = p.parseString()
+	if p.withLocations {
+		n.loc = p.lexer.File().Location(p.token.Pos)
+	}
+	n.name = p.parseString()
 
 	slashdashChildrenEncountered := false
 	childrenEncountered := false
@@ -207,7 +227,7 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 
 			if !slashdash {
 				childrenEncountered = true
-				n.Children.Nodes = nodes
+				n.children.Nodes = nodes
 			} else {
 				slashdashChildrenEncountered = true
 			}
@@ -241,7 +261,7 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 				// arg
 				p.restorepoint(savepoint)
 				if !slashdash {
-					n.Arguments = append(n.Arguments, NewString(s))
+					n.args = append(n.args, NewString(s))
 				}
 			}
 
@@ -253,12 +273,12 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 				}
 			}
 			val := p.parseValue()
-			if val == nil {
+			if val == (Value{}) {
 				p.next()
 				continue
 			}
 			if !slashdash {
-				n.Arguments = append(n.Arguments, val)
+				n.args = append(n.args, val)
 			}
 		}
 	}
@@ -321,41 +341,53 @@ func (p *parser) parseString() string {
 //	keyword-number := '#inf' | '#-inf' | '#nan'
 //	boolean := '#true' | '#false'
 func (p *parser) parseValue() Value {
-	var typeAnnot *string
+	var typeAnnot string
+	var typeAnnotPresent bool
 	if p.token.Type == tokenLParen {
-		t := p.parseType()
-		typeAnnot = &t
+		typeAnnot = p.parseType()
+		typeAnnotPresent = true
 		p.skipNodeSpace()
 	}
 
 	tok := p.token
+	var value Value
+	pos := p.token.Pos
 	switch typ := tok.Type; typ {
 	case tokenUnambiguousIdent, tokenSignedIdent, tokenDottedIdent,
 		tokenQuotedString, tokenQuotedMultiLineString,
 		tokenRawString, tokenRawMultiLineString:
 		str := p.parseString()
-		return NewString(str).WithTypeAnnotation(typeAnnot)
-	case tokenTrue, tokenFalse:
+		value = NewString(str)
+	case tokenTrue:
 		p.next()
-		return NewBoolean(typ == tokenTrue).WithTypeAnnotation(typeAnnot)
+		value = NewBool(true)
+	case tokenFalse:
+		p.next()
+		value = NewBool(false)
 	case tokenNull:
 		p.next()
-		return NewNull().WithTypeAnnotation(typeAnnot)
+		value = NewNull()
 	case tokenInf:
 		p.next()
-		return NewFloat(math.Inf(1)).WithTypeAnnotation(typeAnnot)
+		value = infValue
 	case tokenNegInf:
 		p.next()
-		return NewFloat(math.Inf(-1)).WithTypeAnnotation(typeAnnot)
+		value = negInfValue
 	case tokenNaN:
 		p.next()
-		return NewFloat(math.NaN()).WithTypeAnnotation(typeAnnot)
+		value = nanValue
 	case tokenDecimal, tokenHexadecimal, tokenOctal, tokenBinary:
-		return p.parseNumber().WithTypeAnnotation(typeAnnot)
+		value = p.parseNumber()
 	default:
 		p.errorExpected("value")
-		return nil
+		return NewNull()
 	}
+
+	value = value.WithTypeAnnotation(typeAnnot, typeAnnotPresent)
+	if p.withLocations {
+		value = value.WithLocation(p.lexer.File().Location(pos))
+	}
+	return value
 }
 
 // parseNumber parses a KDL numeric literal and returns it.
@@ -406,7 +438,7 @@ func (p *parser) parseNumber() Value {
 		return NewNull()
 	}
 	if i.IsInt64() {
-		return NewInteger(i.Int64())
+		return NewInt(int(i.Int64()))
 	} else {
 		return NewBigInt(&i)
 	}

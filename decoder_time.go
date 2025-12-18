@@ -88,8 +88,8 @@ func parseDurationBase10(b []byte, pow10 uint64) (time.Duration, error) {
 	wholeBytes, fracBytes := bytesCutByte(suffix, '.', true) // consume whole and frac fields
 	whole, okWhole := parseUint(wholeBytes)                  // parse whole field; may overflow
 	frac, okFrac := parseFracBase10(fracBytes, pow10)        // parse frac field
-	hi, lo := bits.Mul64(whole, uint64(pow10))               // overflow if hi > 0
-	sum, co := bits.Add64(lo, uint64(frac), 0)               // overflow if co > 0
+	hi, lo := bits.Mul64(whole, pow10)                       // overflow if hi > 0
+	sum, co := bits.Add64(lo, frac, 0)                       // overflow if co > 0
 	switch d := mayApplyDurationSign(sum, neg); {            // overflow if neg != (d < 0)
 	case (!okWhole && whole != math.MaxUint64) || !okFrac:
 		return 0, fmt.Errorf("invalid duration %q: %w", b, strconv.ErrSyntax)
@@ -222,10 +222,10 @@ func parseTimeUnix(b []byte, pow10 uint64) (time.Time, error) {
 
 // negateSecNano negates a Unix timestamp, where nsec must be within [0, 1e9).
 func negateSecNano(sec, nsec int64) (int64, int64) {
-	sec = ^sec               // twos-complement negation (i.e., -1*sec + 1)
-	nsec = -nsec + 1e9       // negate nsec and add 1e9 (which is the extra +1 from sec negation)
-	sec += int64(nsec / 1e9) // handle possible overflow of nsec if it started as zero
-	nsec %= 1e9              // ensure nsec stays within [0, 1e9)
+	sec = ^sec         // twos-complement negation (i.e., -1*sec + 1)
+	nsec = -nsec + 1e9 // negate nsec and add 1e9 (which is the extra +1 from sec negation)
+	sec += nsec / 1e9  // handle possible overflow of nsec if it started as zero
+	nsec %= 1e9        // ensure nsec stays within [0, 1e9)
 	return sec, nsec
 }
 

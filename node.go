@@ -7,33 +7,50 @@ import (
 
 // A Node represents a KDL node.
 type Node struct {
-	Name string
-	// TypeAnnotation is the KDL type annotation for the node, if any.
-	TypeAnnotation *string
-	Arguments      []Value
-	Properties     map[string]Value
-	PropertyOrder  []string
-	Children       Document
+	name      string
+	ty        string
+	typeValid bool
+	args      []Value
+	props     map[string]Value
+	propOrder []string
+	children  Document
 
-	// Parent points to the parent node of this node in the document tree, or
-	// nil for top-level nodes.
-	Parent *Node
+	// hints controls the behavior of the emitter when serializing the node.
+	hints emitterHints
 
-	// Hints controls the behavior of the emitter when serializing the node.
-	Hints emitterHints
-
-	// Location is the location of the node in the source file, if available.
-	Location Location
+	// loc is the location of the node in the source file, if available.
+	loc Location
 }
+
+// Name returns the name of the KDL node.
+func (n *Node) Name() string { return n.name }
+
+// TypeAnnotation returns the type annotation of the KDL node, if any.
+func (n *Node) TypeAnnotation() (string, bool) { return n.ty, n.typeValid }
+
+// Arguments returns the arguments of the KDL node.
+func (n *Node) Arguments() []Value { return n.args }
+
+// Properties returns the properties of the KDL node.
+func (n *Node) Properties() map[string]Value { return n.props }
+
+// PropertyOrder returns the order of properties in the KDL node.
+func (n *Node) PropertyOrder() []string { return n.propOrder }
+
+// Children returns the children of the KDL node.
+func (n *Node) Children() *Document { return &n.children }
+
+// Location returns the location of the KDL node in the source file, if available.
+func (n *Node) Location() Location { return n.loc }
+
+// Hints returns the emitter hints for the KDL node.
+func (n *Node) Hints() *emitterHints { return &n.hints }
 
 // NewNode creates a new KDL node with the given name.
 func NewNode(name string) *Node {
 	return &Node{
-		Name:          name,
-		Arguments:     []Value{},
-		Properties:    map[string]Value{},
-		PropertyOrder: []string{},
-		Children:      Document{Nodes: []*Node{}},
+		name:  name,
+		props: map[string]Value{},
 	}
 }
 
@@ -51,23 +68,23 @@ func NewKValue(name string, value Value) *Node {
 
 // AddArgument adds a value as an argument to the KDL node and returns the node.
 func (n *Node) AddArgument(value Value) *Node {
-	n.Arguments = append(n.Arguments, value)
+	n.args = append(n.args, value)
 	return n
 }
 
 // AddProperty adds a property to the KDL node with the given key and value and
 // returns the node.
 func (n *Node) AddProperty(key string, value Value) *Node {
-	if !slices.Contains(n.PropertyOrder, key) {
-		n.PropertyOrder = append(n.PropertyOrder, key)
+	if !slices.Contains(n.propOrder, key) {
+		n.propOrder = append(n.propOrder, key)
 	}
-	n.Properties[key] = value
+	n.props[key] = value
 	return n
 }
 
 // AddChild adds a child node to the KDL node and returns the parent node.
 func (n *Node) AddChild(child *Node) *Node {
-	n.Children.AddNode(child)
+	n.children.AddNode(child)
 	return n
 }
 
@@ -97,7 +114,7 @@ func (n *Node) NewKV(name string, value Value) *Node {
 // AddChildren adds multiple child nodes to the KDL node and returns the parent
 // node.
 func (n *Node) AddChildren(children ...*Node) *Node {
-	n.Children.AddNodes(children...)
+	n.children.AddNodes(children...)
 	return n
 }
 
@@ -114,8 +131,8 @@ func (n *Node) AddChildrenFunc(fn func(n *Document)) *Node {
 //
 // If no such child exists, it returns nil.
 func (n *Node) GetChild(name string) *Node {
-	for _, child := range n.Children.Nodes {
-		if child.Name == name {
+	for _, child := range n.children.Nodes {
+		if child.name == name {
 			return child
 		}
 	}
@@ -132,10 +149,10 @@ type KV struct {
 //
 // If no such children exist, it returns an empty slice.
 func (n *Node) GetKVs() []KV {
-	kvs := make([]KV, 0, len(n.Children.Nodes))
-	for _, child := range n.Children.Nodes {
-		if len(child.Arguments) == 1 {
-			kvs = append(kvs, KV{Key: child.Name, Value: child.Arguments[0]})
+	kvs := make([]KV, 0, len(n.children.Nodes))
+	for _, child := range n.children.Nodes {
+		if len(child.args) == 1 {
+			kvs = append(kvs, KV{Key: child.name, Value: child.args[0]})
 		}
 	}
 	return kvs
@@ -145,33 +162,33 @@ func (n *Node) GetKVs() []KV {
 //
 // If no such children exist, it returns an empty slice.
 func (n *Node) GetChildren(name string) []*Node {
-	children := make([]*Node, 0, len(n.Children.Nodes))
-	for _, child := range n.Children.Nodes {
-		if child.Name == name {
+	children := make([]*Node, 0, len(n.children.Nodes))
+	for _, child := range n.children.Nodes {
+		if child.name == name {
 			children = append(children, child)
 		}
 	}
 	return children
 }
 
-// Clone creates a deep copy of the KDL node and returns it. The cloned node
-// will not maintain a reference to the original node's parent.
+// Clone creates a deep copy of the KDL node and returns it.
 func (n *Node) Clone() *Node {
 	clone := &Node{
-		Name:           n.Name,
-		TypeAnnotation: n.TypeAnnotation,
-		Arguments:      make([]Value, len(n.Arguments)),
-		PropertyOrder:  make([]string, len(n.PropertyOrder)),
-		Properties:     make(map[string]Value, len(n.Properties)),
-		Children:       Document{make([]*Node, 0, len(n.Children.Nodes))},
-		Hints:          n.Hints,
+		name:      n.name,
+		ty:        n.ty,
+		args:      make([]Value, len(n.args)),
+		propOrder: make([]string, len(n.propOrder)),
+		props:     make(map[string]Value, len(n.props)),
+		children:  Document{make([]*Node, 0, len(n.children.Nodes))},
+		hints:     n.hints,
+		loc:       n.loc,
 	}
 
-	copy(clone.Arguments, n.Arguments)
-	copy(clone.PropertyOrder, n.PropertyOrder)
-	maps.Copy(clone.Properties, n.Properties)
-	for _, child := range n.Children.Nodes {
-		clone.Children.Nodes = append(clone.Children.Nodes, child.Clone())
+	copy(clone.args, n.args)
+	copy(clone.propOrder, n.propOrder)
+	maps.Copy(clone.props, n.props)
+	for _, child := range n.children.Nodes {
+		clone.children.Nodes = append(clone.children.Nodes, child.Clone())
 	}
 
 	return clone

@@ -144,11 +144,11 @@ func (e *emitter) emitNode(n *Node) error {
 	if err := e.emitIndent(); err != nil {
 		return err
 	}
-	if n.TypeAnnotation != nil {
+	if ty, ok := n.TypeAnnotation(); ok {
 		if err := e.emit("("); err != nil {
 			return err
 		}
-		if err := e.emitString(*n.TypeAnnotation); err != nil {
+		if err := e.emitString(ty); err != nil {
 			return err
 		}
 		if err := e.emit(")"); err != nil {
@@ -156,11 +156,11 @@ func (e *emitter) emitNode(n *Node) error {
 		}
 	}
 
-	if err := e.emitString(n.Name); err != nil {
+	if err := e.emitString(n.name); err != nil {
 		return err
 	}
 
-	for _, a := range n.Arguments {
+	for _, a := range n.args {
 		if err := e.emit(" "); err != nil {
 			return err
 		}
@@ -169,7 +169,7 @@ func (e *emitter) emitNode(n *Node) error {
 		}
 	}
 
-	props := slices.Clone(n.PropertyOrder)
+	props := slices.Clone(n.propOrder)
 	slices.Sort(props)
 	for _, p := range props {
 		if err := e.emit(" "); err != nil {
@@ -181,17 +181,17 @@ func (e *emitter) emitNode(n *Node) error {
 		if err := e.emit("="); err != nil {
 			return err
 		}
-		if err := e.emitValue(n.Properties[p]); err != nil {
+		if err := e.emitValue(n.props[p]); err != nil {
 			return err
 		}
 	}
 
-	if len(n.Children.Nodes) > 0 || n.Hints.EmitEmptyChildren {
+	if len(n.children.Nodes) > 0 || n.hints.EmitEmptyChildren {
 		if err := e.emit(" {\n"); err != nil {
 			return err
 		}
 		e.indentLevel++
-		if err := e.emitDocument(&n.Children); err != nil {
+		if err := e.emitDocument(&n.children); err != nil {
 			return err
 		}
 		e.indentLevel--
@@ -234,33 +234,33 @@ func (e *emitter) emitString(s string) error {
 }
 
 func (e *emitter) emitValue(v Value) error {
-	if v.TypeAnnotation() != nil {
+	if ty, ok := v.TypeAnnotation(); ok {
 		if err := e.emit("("); err != nil {
 			return err
 		}
-		if err := e.emitString(*v.TypeAnnotation()); err != nil {
+		if err := e.emitString(ty); err != nil {
 			return err
 		}
 		if err := e.emit(")"); err != nil {
 			return err
 		}
 	}
-	switch val := v.(type) {
+	switch v.Kind() {
 	case String:
-		return e.emitString(val.value)
-	case Integer:
-		return e.emit(strconv.FormatInt(val.value, 10))
+		return e.emitString(v.String())
+	case Int:
+		return e.emit(strconv.FormatInt(int64(v.Int()), 10))
 	case BigInt:
-		return e.emit(val.value.String())
+		return e.emit(v.BigInt().String())
 	case Float:
-		if math.IsNaN(val.value) {
+		if math.IsNaN(v.Float()) {
 			return e.emit("#nan")
 		}
-		return e.emitFloat(new(big.Float).SetFloat64(val.value))
+		return e.emitFloat(new(big.Float).SetFloat64(v.Float()))
 	case BigFloat:
-		return e.emitFloat(val.value)
-	case Boolean:
-		if val.value {
+		return e.emitFloat(v.BigFloat())
+	case Bool:
+		if v.Bool() {
 			return e.emit("#true")
 		} else {
 			return e.emit("#false")
