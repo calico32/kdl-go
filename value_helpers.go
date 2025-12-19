@@ -2,8 +2,11 @@ package kdl
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"slices"
+
+	"github.com/pkg/errors"
 )
 
 type keyType interface{ ~string | ~int }
@@ -81,7 +84,7 @@ func GetKV(document *Document, name string) (*Value, error) {
 	for _, child := range document.Nodes {
 		if child.name == name {
 			if len(child.args) != 1 {
-				return nil, fmt.Errorf("child %s does not have exactly one argument", name)
+				return nil, errors.Errorf("child %s does not have exactly one argument", name)
 			}
 			return &child.args[0], nil
 		}
@@ -97,47 +100,73 @@ type intoValue interface {
 		~float32 | ~float64 |
 		~bool |
 		~*big.Int | ~*big.Float |
-		~*Value
+		~*Value | any
 }
 
 // NewValue wraps a raw value with its corresponding KDL value type. It panics
 // if the value is not a valid KDL value.
 func NewValue[T intoValue](v T) Value {
+	val, err := TryNewValue(v)
+	if err != nil {
+		panic(err)
+	}
+	return val
+}
+
+func TryNewValue[T intoValue](v T) (Value, error) {
 	switch v := any(v).(type) {
+	case ValueMarshaler:
+		return v.MarshalKDLValue()
 	case string:
-		return NewString(v)
+		return NewString(v), nil
 	case int:
-		return NewInt(v)
+		return NewInt(v), nil
+	case int8:
+		return NewInt(int(v)), nil
 	case int16:
-		return NewInt(int(v))
+		return NewInt(int(v)), nil
 	case int32:
-		return NewInt(int(v))
+		return NewInt(int(v)), nil
 	case int64:
-		return NewInt(int(v))
+		if v >= math.MinInt && v <= math.MaxInt {
+			return NewInt(int(v)), nil
+		}
+		return NewBigInt(big.NewInt(v)), nil
 	case uint:
-		return NewInt(int(v))
+		if v <= math.MaxInt {
+			return NewInt(int(v)), nil
+		}
+		return NewBigInt(new(big.Int).SetUint64(uint64(v))), nil
+	case uint8:
+		return NewInt(int(v)), nil
 	case uint16:
-		return NewInt(int(v))
+		return NewInt(int(v)), nil
 	case uint32:
-		return NewInt(int(v))
+		if uint64(v) <= math.MaxInt {
+			return NewInt(int(v)), nil
+		}
+		return NewBigInt(new(big.Int).SetUint64(uint64(v))), nil
 	case uint64:
-		return NewBigInt(new(big.Int).SetUint64(v))
+		if v <= math.MaxInt {
+			return NewInt(int(v)), nil
+		}
+		return NewBigInt(new(big.Int).SetUint64(v)), nil
 	case float32:
-		return NewFloat(float64(v))
+		return NewFloat(float64(v)), nil
 	case float64:
-		return NewFloat(v)
+		return NewFloat(v), nil
 	case bool:
-		return NewBool(v)
+		return NewBool(v), nil
 	case *big.Int:
-		return NewBigInt(v)
+		return NewBigInt(v), nil
 	case *big.Float:
-		return NewBigFloat(v)
+		return NewBigFloat(v), nil
 	case *Value:
 		if v == nil {
-			return NewNull()
+			return NewNull(), nil
 		}
-		return *v
+		return *v, nil
 	default:
-		panic(fmt.Sprintf("kdl.NewValue(): unsupported type %T", v))
+		return Value{}, errors.Errorf("kdl.NewValue(): unsupported type %T", v)
 	}
 }

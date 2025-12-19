@@ -17,7 +17,7 @@ type decoder struct {
 // unmarshalDocument unmarshals a KDL document into the given Go value v.
 func unmarshalDocument(doc *Document, v any, strict bool) error {
 	if u, ok := v.(DocumentUnmarshaler); ok {
-		return u.UnmarshalKDL(doc)
+		return u.UnmarshalKDLDocument(doc)
 	}
 
 	target, err := unwrapPointerOrInterface(v)
@@ -142,7 +142,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
 		u := reflect.New(target.Type())
-		err := u.Interface().(ValueUnmarshaler).UnmarshalKDL(node.args[0])
+		err := u.Interface().(ValueUnmarshaler).UnmarshalKDLValue(node.args[0])
 		if err != nil {
 			return err
 		}

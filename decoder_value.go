@@ -17,7 +17,7 @@ import (
 func (d *decoder) unmarshalValue(value Value, tag structTag, target reflect.Value) error {
 	if target.Type().NumMethod() > 0 && target.CanInterface() {
 		if u, ok := target.Interface().(ValueUnmarshaler); ok {
-			return u.UnmarshalKDL(value)
+			return u.UnmarshalKDLValue(value)
 		}
 	}
 

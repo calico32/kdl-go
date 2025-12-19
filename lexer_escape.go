@@ -92,7 +92,7 @@ func unescapeString(s string) (string, error) {
 					state = whitespace
 					continue
 				}
-				return "", fmt.Errorf("invalid escape sequence: \\%c", ch)
+				return "", errors.Errorf("invalid escape sequence: \\%c", ch)
 			}
 
 			state = normal
@@ -108,10 +108,10 @@ func unescapeString(s string) (string, error) {
 	}
 
 	if state == escape {
-		return "", fmt.Errorf("invalid escape sequence: trailing backslash")
+		return "", errors.Errorf("invalid escape sequence: trailing backslash")
 	}
 	if state == unicodeHex {
-		return "", fmt.Errorf("invalid unicode escape sequence: missing '}'")
+		return "", errors.Errorf("invalid unicode escape sequence: missing '}'")
 	}
 	return result.String(), nil
 }

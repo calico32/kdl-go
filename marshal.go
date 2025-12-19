@@ -2,7 +2,7 @@ package kdl
 
 // A ValueMarshaler can marshal itself to a KDL Value.
 type ValueMarshaler interface {
-	MarshalKDL() (Value, error)
+	MarshalKDLValue() (Value, error)
 }
 
 // A Marshaler can marshal itself to a KDL Node.
@@ -12,12 +12,12 @@ type Marshaler interface {
 
 // A DocumentMarshaler can marshal itself to a KDL Document.
 type DocumentMarshaler interface {
-	MarshalKDL() (*Document, error)
+	MarshalKDLDocument() (*Document, error)
 }
 
 // A ValueUnmarshaler can unmarshal itself from a KDL Value.
 type ValueUnmarshaler interface {
-	UnmarshalKDL(value Value) error
+	UnmarshalKDLValue(value Value) error
 }
 
 // An Unmarshaler can unmarshal itself from a KDL Node.
@@ -27,7 +27,7 @@ type Unmarshaler interface {
 
 // A DocumentUnmarshaler can unmarshal itself from a KDL Document.
 type DocumentUnmarshaler interface {
-	UnmarshalKDL(doc *Document) error
+	UnmarshalKDLDocument(doc *Document) error
 }
 
 // MarshalNodes marshals the given [Marshaler]s and adds them to the document's nodes.
