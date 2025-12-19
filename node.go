@@ -72,6 +72,16 @@ func (n *Node) AddArgument(value Value) *Node {
 	return n
 }
 
+// RemoveArgument removes the argument at the given index from the KDL node and
+// returns the node. If the index is out of bounds, RemoveArgument does nothing.
+func (n *Node) RemoveArgument(index int) *Node {
+	if index < 0 || index >= len(n.args) {
+		return n
+	}
+	n.args = append(n.args[:index], n.args[index+1:]...)
+	return n
+}
+
 // AddProperty adds a property to the KDL node with the given key and value and
 // returns the node.
 func (n *Node) AddProperty(key string, value Value) *Node {
@@ -79,6 +89,17 @@ func (n *Node) AddProperty(key string, value Value) *Node {
 		n.propOrder = append(n.propOrder, key)
 	}
 	n.props[key] = value
+	return n
+}
+
+// RemoveProperty removes the property with the given key from the KDL node and
+// returns the node. If the property does not exist, RemoveProperty does
+// nothing.
+func (n *Node) RemoveProperty(key string) *Node {
+	if _, ok := n.props[key]; ok {
+		delete(n.props, key)
+		n.propOrder = slices.DeleteFunc(n.propOrder, func(s string) bool { return s == key })
+	}
 	return n
 }
 

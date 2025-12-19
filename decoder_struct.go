@@ -212,7 +212,8 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 		len(node.args) > 0) &&
 		len(ctx.usedProperties) == 0 &&
 		len(ctx.usedChildren) == 0 &&
-		len(ctx.argFields) == 0 && ctx.argsField == -1 && ctx.propsField == -1 && ctx.childrenField == -1 {
+		len(ctx.argFields) == 0 && ctx.argsField == -1 && ctx.propsField == -1 && ctx.childrenField == -1 &&
+		len(ctx.tags) > 0 {
 		return errors.Errorf("don't know what to do with node %q unmarshaling into struct %s", node.name, target.Type())
 	}
 
