@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Encode marshals the given value into a KDL Document and writes its KDL
 func Encode(v any, w io.Writer, opts ...EmitterOption) error {
 	doc, err := Marshal(v)
 	if err != nil {
@@ -63,6 +64,27 @@ func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 		opt(e)
 	}
 	defer un(e.trace("Marshal %s", target.Type()))
+
+	if target.Type().Implements(reflect.TypeFor[DocumentMarshaler]()) {
+		dm := target.Interface().(DocumentMarshaler)
+		marshaledDoc, err := dm.MarshalKDLDocument()
+		if err != nil {
+			return nil, err
+		}
+		return marshaledDoc, nil
+	}
+
+	if reflect.PointerTo(target.Type()).Implements(reflect.TypeFor[DocumentMarshaler]()) {
+		ptr := reflect.New(target.Type())
+		ptr.Elem().Set(target)
+		dm := ptr.Interface().(DocumentMarshaler)
+		marshaledDoc, err := dm.MarshalKDLDocument()
+		if err != nil {
+			return nil, err
+		}
+		return marshaledDoc, nil
+	}
+
 	switch target.Kind() {
 	case reflect.Struct:
 		err := e.encodeStructFieldsAsNodes(target)

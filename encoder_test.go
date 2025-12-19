@@ -190,6 +190,17 @@ var encoderTests = []struct {
 			}
 		`,
 	},
+	{
+		"document marshaler",
+		&EncoderCustomDocumentMarshaler{
+			Title: "Document Only",
+			Count: 42,
+		},
+		`
+			custom-title "Document Only"
+			custom-count 42
+		`,
+	},
 }
 
 func TestEncoder(t *testing.T) {
@@ -226,6 +237,8 @@ func TestEncoder(t *testing.T) {
 	}
 }
 
+// roundtrip parses the given KDL document string and then emits it back to a
+// string, essentially normalizing/formatting it.
 func roundtrip(doc string) (string, error) {
 	parsed, err := kdl.Parse(strings.NewReader(doc))
 	if err != nil {
