@@ -1,6 +1,6 @@
 # kdl-go
 
-Package kdl implements a parser and emitter for the [KDL](https://kdl.dev/) document format (version 2 only). It supports reading and writing KDL documents, as well as decoding KDL documents into Go data structures.
+Package kdl implements a parser and emitter for the [KDL](https://kdl.dev/) document format (version 2 only). It supports reading and writing KDL documents, as well as decoding KDL documents into Go data structures and encoding them back into KDL.
 
 This implementation follows the KDL 2.0.0 specification and passes the upstream test suite (see `kdl_test.go`).
 
@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/calico32/kdl-go"
@@ -44,20 +45,33 @@ type Host struct {
 }
 
 func main() {
+    // open a KDL document (or, read from a string in this case)
 	f := strings.NewReader(configKdl)
 
+    // decode it into a Config
 	var config Config
 	err := kdl.Decode(f, &config)
 	if err != nil {
 		panic(err)
 	}
 
+    // print out the hosts
 	for _, host := range config.Hosts {
 		fmt.Printf("%s: %s@%s:%d\n", host.Name, host.User, host.Hostname, host.Port)
+		// example1: root@example.com:22
+		// example2: http@example.org:2022
 	}
 
-	// Output:
-	// example1: root@example.com:22
-	// example2: http@example.org:2022
+    // create an output file
+	out, err := os.Create("output.kdl")
+	if err != nil {
+        panic(err)
+	}
+
+    // encode the Config back into KDL
+	err = kdl.Encode(config, out)
+	if err != nil {
+		panic(err)
+	}
 }
 ```
