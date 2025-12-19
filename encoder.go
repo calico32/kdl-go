@@ -11,6 +11,13 @@ import (
 )
 
 // Encode marshals the given value into a KDL Document and writes its KDL
+// representation to the given writer. v must be a struct, map, or
+// [DocumentMarshaler]. Any options provided will be passed to the underlying
+// emitter; see [Emit] for details. It returns any error encountered during
+// marshaling or emitting.
+//
+// By default, struct fields are marshaled as child nodes. To customize this
+// behavior, use struct tags as described in [Decode].
 func Encode(v any, w io.Writer, opts ...EmitterOption) error {
 	doc, err := Marshal(v)
 	if err != nil {
