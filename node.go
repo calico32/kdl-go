@@ -11,7 +11,7 @@ type Node struct {
 	ty        string
 	typeValid bool
 	args      []Value
-	props     map[string]Value
+	props     map[string]Value // required
 	propOrder []string
 	children  Document
 
