@@ -4,6 +4,8 @@ Package kdl implements a parser and emitter for the [KDL](https://kdl.dev/) docu
 
 This implementation follows the KDL 2.0.0 specification and passes the upstream test suite (see `kdl_test.go`).
 
+Visit [pkg.go.dev](https://pkg.go.dev/github.com/calico32/kdl-go) for the full documentation.
+
 > [!Caution]
 > This package's public 0.x API is not stable yet and may change at any time.
 > Use at your own risk.
