@@ -1,7 +1,6 @@
 package kdl
 
 import (
-	"fmt"
 	"math/big"
 	"reflect"
 
@@ -33,7 +32,7 @@ func unmarshalDocument(doc *Document, v any, strict bool) error {
 	case reflect.Struct:
 		return d.unmarshalNodesIntoStructFields(doc.Nodes, target)
 	default:
-		return fmt.Errorf("argument must be a pointer to struct, interface, or map (unmarshaling document, got %s)", target.Kind())
+		return errors.Errorf("argument must be a pointer to struct, interface, or map (unmarshaling document, got %s)", target.Kind())
 	}
 }
 
@@ -70,7 +69,7 @@ func unwrapPointerOrInterface(v any) (reflect.Value, error) {
 		} else {
 			target = target.Elem()
 			if target.Kind() != reflect.Pointer {
-				return reflect.Value{}, fmt.Errorf("interface must contain a pointer to struct, interface, or map")
+				return reflect.Value{}, errors.Errorf("interface must contain a pointer to struct, interface, or map")
 			}
 			target = target.Elem()
 		}
@@ -140,7 +139,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 
 	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[ValueUnmarshaler]()) {
 		if len(node.args) != 1 {
-			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
+			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
 		u := reflect.New(target.Type())
 		err := u.Interface().(ValueUnmarshaler).UnmarshalKDL(node.args[0])
@@ -164,7 +163,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
 		reflect.Bool:
 		if len(node.args) != 1 {
-			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Kind())
+			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Kind())
 		}
 		return d.unmarshalValue(node.args[0], tag, target)
 
@@ -212,13 +211,13 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 	case reflect.Interface:
 		if len(node.props) == 0 && len(node.children.Nodes) == 0 {
 			if len(node.args) != 1 {
-				return fmt.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.name)
+				return errors.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.name)
 			}
 			return d.unmarshalValueIntoInterface(node.args[0], target)
 		}
 
 		if target.NumMethod() != 0 {
-			return fmt.Errorf("cannot unmarshal node %q into non-empty interface", node.name)
+			return errors.Errorf("cannot unmarshal node %q into non-empty interface", node.name)
 		}
 
 		m := reflect.ValueOf(map[string]any{})

@@ -1,6 +1,7 @@
 package kdl
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 
@@ -11,8 +12,7 @@ import (
 type tagFlags uint16
 
 const (
-	omitempty  tagFlags = 1 << iota // omit empty values when marshaling
-	omitzero                        // omit zero values when marshaling
+	omitzero   tagFlags = 1 << iota // omit zero values when marshaling
 	strict                          // enable strict unmarshaling for this field
 	multiple                        // multiple nodes with the same name can be unmarshaled into a slice
 	argument                        // consumes a single argument
@@ -25,9 +25,6 @@ const (
 
 func (tag tagFlags) String() string {
 	var parts []string
-	if tag&omitempty != 0 {
-		parts = append(parts, "omitempty")
-	}
 	if tag&omitzero != 0 {
 		parts = append(parts, "omitzero")
 	}
@@ -60,8 +57,6 @@ func (tag tagFlags) String() string {
 
 func lookupFlag(name string) tagFlags {
 	switch name {
-	case "omitempty":
-		return omitempty
 	case "omitzero":
 		return omitzero
 	case "strict":
@@ -124,16 +119,15 @@ func parseStructTag(str string) (t structTag, err error) {
 	}
 
 	allowedCombinations := map[tagFlags][]tagFlags{
-		omitempty:  {argument, arguments, property, properties, child, children, multiple},
-		omitzero:   {argument, arguments, property, properties, child, children, multiple},
-		strict:     {omitzero, omitempty, argument, arguments, property, properties, child, children, multiple},
-		argument:   {omitempty, omitzero, strict},
-		arguments:  {omitempty, omitzero, strict},
-		property:   {omitempty, omitzero, strict},
-		properties: {omitempty, omitzero, strict, children},
-		child:      {omitempty, omitzero, strict, multiple},
-		children:   {omitempty, omitzero, strict, properties},
-		multiple:   {omitempty, omitzero, strict, child},
+		omitzero:   {strict, arguments, property, properties, child, children, multiple},
+		strict:     {omitzero, argument, arguments, property, properties, child, children, multiple},
+		argument:   {strict},
+		arguments:  {omitzero, strict},
+		property:   {omitzero, strict},
+		properties: {omitzero, strict, children},
+		child:      {omitzero, strict, multiple},
+		children:   {omitzero, strict, properties},
+		multiple:   {omitzero, strict, child},
 	}
 
 	for thisFlag, allowed := range allowedCombinations {
@@ -159,4 +153,111 @@ func parseStructTag(str string) (t structTag, err error) {
 	}
 
 	return
+}
+
+type structContext struct {
+	tags           []structTag
+	argsField      int // required
+	propsField     int // required
+	childrenField  int // required
+	argFields      []int
+	unusedFields   map[int]struct{}    // required
+	strictFields   map[int]struct{}    // required
+	usedChildren   map[int]struct{}    // required
+	usedProperties map[string]struct{} // required
+}
+
+func newStructContext(typ reflect.Type) (*structContext, error) {
+	ctx := &structContext{
+		tags:           make([]structTag, typ.NumField()),
+		argsField:      -1,
+		propsField:     -1,
+		childrenField:  -1,
+		argFields:      []int{},
+		unusedFields:   make(map[int]struct{}),
+		strictFields:   make(map[int]struct{}),
+		usedChildren:   make(map[int]struct{}),
+		usedProperties: make(map[string]struct{}),
+	}
+	for fieldIndex := 0; fieldIndex < typ.NumField(); fieldIndex++ {
+		field := typ.Field(fieldIndex)
+		tagStr, hasKdlTag := field.Tag.Lookup("kdl")
+		if !hasKdlTag {
+			tagStr = field.Name
+		}
+
+		if !field.IsExported() {
+			if hasKdlTag {
+				return nil, errors.Errorf("unexported field %q has kdl tag", field.Name)
+			}
+
+			// otherwise, ignore unexported field
+			ctx.tags[fieldIndex] = structTag{}
+			continue
+		}
+
+		tag, err := parseStructTag(tagStr)
+		if err != nil {
+			return nil, errors.Wrapf(err, "parsing kdl tag for field %q", field.Name)
+		}
+		ctx.tags[fieldIndex] = tag
+
+		if tag.flags&strict != 0 {
+			ctx.strictFields[fieldIndex] = struct{}{}
+		}
+
+		ctx.unusedFields[fieldIndex] = struct{}{}
+
+		if tag.flags&argument != 0 {
+			ctx.argFields = append(ctx.argFields, fieldIndex)
+		}
+		if tag.flags&arguments != 0 {
+			if ctx.argsField != -1 {
+				return nil, errors.Errorf("multiple arguments fields in struct (field %q and %q in struct %s)", typ.Field(ctx.argsField).Name, field.Name, typ)
+			}
+			ctx.argsField = fieldIndex
+		}
+		if tag.flags&properties != 0 {
+			if ctx.propsField != -1 {
+				return nil, errors.Errorf("multiple properties fields in struct (field %q and %q in struct %s)", typ.Field(ctx.propsField).Name, field.Name, typ)
+			}
+			ctx.propsField = fieldIndex
+		}
+		if tag.flags&children != 0 {
+			if ctx.childrenField != -1 {
+				return nil, errors.Errorf("multiple children fields in struct (field %q and %q in struct %s)", typ.Field(ctx.childrenField).Name, field.Name, typ)
+			}
+			ctx.childrenField = fieldIndex
+		}
+	}
+
+	return ctx, nil
+}
+
+func (ctx *structContext) markFieldUsed(index int) {
+	delete(ctx.unusedFields, index)
+	delete(ctx.strictFields, index)
+}
+
+func (ctx *structContext) markPropertyUsed(name string) {
+	ctx.usedProperties[name] = struct{}{}
+}
+
+func (ctx *structContext) markChildUsed(index int) {
+	ctx.usedChildren[index] = struct{}{}
+}
+
+func (ctx *structContext) isFieldStrict(index int) bool {
+	_, ok := ctx.strictFields[index]
+	return ok
+}
+
+func (ctx *structContext) isPropertyUnused(name string) bool {
+	_, ok := ctx.usedProperties[name]
+	return !ok
+}
+
+func (ctx *structContext) isChildUnused(index int) bool {
+	_, ok := ctx.usedChildren[index]
+	return !ok
 }
