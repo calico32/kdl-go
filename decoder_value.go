@@ -10,10 +10,59 @@ import (
 	"github.com/pkg/errors"
 )
 
+// unmarshalValue unmarshals a KDL value into a single Go value. See [Unmarshal]
+// for details on supported value types. It handles special cases like
+// [time.Time], [time.Duration], and [ValueUnmarshaler], using an optional
+// format string for guidance.
+func (d *decoder) unmarshalValue(value Value, tag structTag, target reflect.Value) error {
+	if target.Type().NumMethod() > 0 && target.CanInterface() {
+		if u, ok := target.Interface().(ValueUnmarshaler); ok {
+			return u.UnmarshalKDL(value)
+		}
+	}
+
+	switch target.Type() {
+	case timeType:
+		return d.unmarshalTime(value, tag, target)
+	case durationType:
+		return d.unmarshalDuration(value, tag, target)
+	}
+
+	switch target.Kind() {
+	case reflect.String:
+		return d.unmarshalString(value, tag, target)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return d.unmarshalInt(value, tag, target)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return d.unmarshalUint(value, tag, target)
+	case reflect.Float32, reflect.Float64:
+		return d.unmarshalFloat(value, tag, target)
+	case reflect.Bool:
+		return d.unmarshalBool(value, tag, target)
+	case reflect.Pointer:
+		elem := target.Type().Elem()
+		switch elem {
+		case bigIntType:
+			return d.unmarshalBigInt(value, tag, target)
+		case bigFloatType:
+			return d.unmarshalBigFloat(value, tag, target)
+		default:
+			if target.IsNil() {
+				target.Set(reflect.New(elem))
+			}
+			return d.unmarshalValue(value, tag, target.Elem())
+		}
+	case reflect.Interface:
+		return d.unmarshalValueIntoInterface(value, target)
+	}
+
+	return nil
+}
+
 // unmarshalString unmarshals a KDL value into a Go string, converting as needed
 // outside of strict mode.
-func (d *decoder) unmarshalString(v Value, target reflect.Value) error {
-	if d.strict {
+func (d *decoder) unmarshalString(v Value, tag structTag, target reflect.Value) error {
+	if d.strict || tag.flags&strict != 0 {
 		if v.Kind() == String {
 			target.SetString(v.String())
 			return nil
@@ -43,8 +92,8 @@ func (d *decoder) unmarshalString(v Value, target reflect.Value) error {
 
 // unmarshalInt unmarshals a KDL value into a Go integer, converting as needed
 // outside of strict mode.
-func (d *decoder) unmarshalInt(v Value, target reflect.Value) error {
-	if d.strict {
+func (d *decoder) unmarshalInt(v Value, tag structTag, target reflect.Value) error {
+	if d.strict || tag.flags&strict != 0 {
 		switch v.Kind() {
 		case Int:
 			return d.setInt(target, int64(v.Int()))
@@ -99,8 +148,8 @@ func (d *decoder) setInt(target reflect.Value, value int64) error {
 
 // unmarshalUint unmarshals a KDL value into a Go unsigned integer, converting
 // as needed outside of strict mode.
-func (d *decoder) unmarshalUint(v Value, target reflect.Value) error {
-	if d.strict {
+func (d *decoder) unmarshalUint(v Value, tag structTag, target reflect.Value) error {
+	if d.strict || tag.flags&strict != 0 {
 		switch v.Kind() {
 		case Int:
 			if v.Int() < 0 {
@@ -173,8 +222,8 @@ func (d *decoder) setUint(target reflect.Value, value uint64) error {
 
 // unmarshalFloat unmarshals a KDL value into a Go float, converting as needed
 // outside of strict mode.
-func (d *decoder) unmarshalFloat(v Value, target reflect.Value) error {
-	if d.strict {
+func (d *decoder) unmarshalFloat(v Value, tag structTag, target reflect.Value) error {
+	if d.strict || tag.flags&strict != 0 {
 		switch v.Kind() {
 		case Float:
 			target.SetFloat(v.Float())
@@ -220,8 +269,8 @@ func (d *decoder) unmarshalFloat(v Value, target reflect.Value) error {
 
 // unmarshalBool unmarshals a KDL value into a Go bool, converting as needed
 // outside of strict mode.
-func (d *decoder) unmarshalBool(v Value, target reflect.Value) error {
-	if d.strict {
+func (d *decoder) unmarshalBool(v Value, tag structTag, target reflect.Value) error {
+	if d.strict || tag.flags&strict != 0 {
 		if v.Kind() == Bool {
 			target.SetBool(v.Bool())
 			return nil
@@ -259,10 +308,10 @@ func (d *decoder) unmarshalBool(v Value, target reflect.Value) error {
 
 // unmarshalBigInt unmarshals a KDL value into a Go big.Int, converting as needed
 // outside of strict mode.
-func (d *decoder) unmarshalBigInt(v Value, target reflect.Value) error {
+func (d *decoder) unmarshalBigInt(v Value, tag structTag, target reflect.Value) error {
 	// targetField is a pointer to a big.Int
 	bi := target.Interface().(*big.Int)
-	if d.strict {
+	if d.strict || tag.flags&strict != 0 {
 		switch v.Kind() {
 		case Int:
 			bi.SetInt64(int64(v.Int()))
@@ -306,10 +355,10 @@ func (d *decoder) unmarshalBigInt(v Value, target reflect.Value) error {
 
 // unmarshalBigFloat unmarshals a KDL value into a Go big.Float, converting as needed
 // outside of strict mode.
-func (d *decoder) unmarshalBigFloat(v Value, target reflect.Value) error {
+func (d *decoder) unmarshalBigFloat(v Value, tag structTag, target reflect.Value) error {
 	// targetField is a pointer to a big.Float
 	bf := target.Interface().(*big.Float)
-	if d.strict {
+	if d.strict || tag.flags&strict != 0 {
 		switch v.Kind() {
 		case Float:
 			bf.SetFloat64(v.Float())
@@ -353,8 +402,9 @@ func (d *decoder) unmarshalBigFloat(v Value, target reflect.Value) error {
 // format is interpreted using the same rules as time.Parse, using [time.RFC3339] as
 // the default if empty.
 // TODO: strict mode handling
-func (d *decoder) unmarshalTime(v Value, format string, target reflect.Value) error {
+func (d *decoder) unmarshalTime(v Value, tag structTag, target reflect.Value) error {
 	// target is a time.Time
+	format := tag.format
 	if format == "" {
 		format = time.RFC3339
 	}
@@ -395,9 +445,9 @@ func (d *decoder) unmarshalTime(v Value, format string, target reflect.Value) er
 // converting as needed. format must be one of units (corresponding to
 // [time.ParseDuration]), sec, milli, micro, or nano.
 // TODO: strict mode handling
-func (d *decoder) unmarshalDuration(v Value, format string, target reflect.Value) error {
+func (d *decoder) unmarshalDuration(v Value, tag structTag, target reflect.Value) error {
 	base := uint64(0)
-	switch format {
+	switch tag.format {
 	case "units":
 		base = 0
 	case "sec":
@@ -409,7 +459,7 @@ func (d *decoder) unmarshalDuration(v Value, format string, target reflect.Value
 	case "nano":
 		base = 1e0
 	default:
-		return errors.Errorf("unknown duration format %q", format)
+		return errors.Errorf("unknown duration format %q", tag.format)
 	}
 
 	var td time.Duration

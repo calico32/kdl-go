@@ -300,3 +300,115 @@ func TestDecodeStrictMode(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeStructTags(t *testing.T) {
+	type T struct {
+		Arg      int               `kdl:",arg,strict"`
+		Args     []int             `kdl:",args"`
+		Prop     string            `kdl:"prop,prop"`
+		Props    map[string]string `kdl:",props"`
+		Child    []string          `kdl:"child,child,multiple"`
+		Children map[string]string `kdl:",children"`
+	}
+
+	type D struct {
+		Node []T `kdl:"node,multiple"`
+	}
+
+	doc := `
+		node 1 2 "3" 4 prop=foo extra=bar {
+			child child1
+			child child2
+			unmapped1 alice
+			unmapped2 bob
+		}
+		node 5 6 7 "8" prop=bar another=baz {
+			child child3
+			child child4
+			unmapped3 charlie
+			unmapped4 dave
+		}
+	`
+
+	expected := D{
+		Node: []T{
+			{
+				Arg:      1,
+				Args:     []int{2, 3, 4},
+				Prop:     "foo",
+				Props:    map[string]string{"extra": "bar"},
+				Child:    []string{"child1", "child2"},
+				Children: map[string]string{"unmapped1": "alice", "unmapped2": "bob"},
+			},
+			{
+				Arg:      5,
+				Args:     []int{6, 7, 8},
+				Prop:     "bar",
+				Props:    map[string]string{"another": "baz"},
+				Child:    []string{"child3", "child4"},
+				Children: map[string]string{"unmapped3": "charlie", "unmapped4": "dave"},
+			},
+		},
+	}
+
+	var actual D
+	err := kdl.Decode(strings.NewReader(doc), &actual)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	if !reflect.DeepEqual(expected, actual) {
+		t.Errorf("Value mismatch\nExpected:\n%s\nGot:\n%s", spew.Sdump(expected), spew.Sdump(actual))
+	}
+
+	empty := `
+		node
+	`
+
+	var actualEmpty D
+	err = kdl.Decode(strings.NewReader(empty), &actualEmpty)
+	if err == nil {
+		t.Errorf("Expected error for missing required fields, but got none")
+		return
+	}
+
+	wrongType := `
+		node "1"
+	`
+	var actualWrongType D
+	err = kdl.Decode(strings.NewReader(wrongType), &actualWrongType)
+	if err == nil {
+		t.Errorf("Expected error for wrong argument type, but got none")
+		return
+	}
+}
+
+func TestDecodeStructTagErrors(t *testing.T) {
+	tags := []reflect.StructTag{
+		`kdl:",arg,arg"`,
+		`kdl:"foo,prop,prop"`,
+		`kdl:"name,arg"`,
+		`kdl:",child"`,
+		`kdl:",prop"`,
+		`kdl:"foo,arg,args"`,
+		`kdl:"bar,prop,props"`,
+		`kdl:"baz,child,children"`,
+		`kdl:",args,props"`,
+		`kdl:",args,children"`,
+		`kdl:",arg,multiple"`,
+		`kdl:"prop,prop,multiple"`,
+	}
+
+	for _, tag := range tags {
+		typ := reflect.StructOf([]reflect.StructField{
+			{Name: "Field", Type: reflect.TypeFor[string](), Tag: tag},
+		})
+		ptr := reflect.New(typ).Interface()
+		err := kdl.Decode(strings.NewReader(""), ptr)
+		if err == nil {
+			t.Errorf("Expected error for illegal tag %s, but got none", tag)
+			return
+		}
+	}
+}
