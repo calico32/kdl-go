@@ -42,6 +42,17 @@ func Emit(d *Document, w io.Writer, opts ...EmitterOption) error {
 	return e.emitDocument(d)
 }
 
+// EmitToString is like [Emit] but returns the emitted KDL as a string; see
+// [Emit] for details.
+func EmitToString(d *Document, opts ...EmitterOption) (string, error) {
+	var buf strings.Builder
+	err := Emit(d, &buf, opts...)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
 type emitter struct {
 	w           io.Writer
 	indent      string

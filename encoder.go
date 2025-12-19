@@ -31,8 +31,21 @@ func Encode(v any, w io.Writer, opts ...EmitterOption) error {
 	return nil
 }
 
+// EncodeToString is like [Encode] but returns the emitted KDL as a string; see
+// [Encode] for details.
+func EncodeToString(v any, opts ...EmitterOption) (string, error) {
+	var buf strings.Builder
+	err := Encode(v, &buf, opts...)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
 type MarshalOption func(*encoder)
 
+// Marshal marshals the given value into a KDL Document. v must be a struct,
+// map, or [DocumentMarshaler]. See [Encode] for details on marshaling behavior.
 func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 	var target reflect.Value
 	if rv, ok := v.(reflect.Value); ok {
@@ -110,6 +123,8 @@ func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 	return doc, nil
 }
 
+// WithTrace is a [MarshalOption] that enables tracing of the marshaling
+// process to the given writer.
 func WithTrace(w io.Writer) MarshalOption {
 	return func(e *encoder) {
 		e.traceWriter = w
