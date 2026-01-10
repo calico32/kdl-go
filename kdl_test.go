@@ -2,9 +2,9 @@ package kdl_test
 
 import (
 	"bytes"
-	"embed"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +23,13 @@ func TestKdl2Suite(t *testing.T) {
 	testKdlSuite(kdl.Version2, test.Kdl2Tests, "kdl2/tests/test_cases", t)
 }
 
-func testKdlSuite(version kdl.Version, fs embed.FS, dir string, t *testing.T) {
+type filesys interface {
+	fs.FS
+	fs.ReadDirFS
+	fs.ReadFileFS
+}
+
+func testKdlSuite(version kdl.Version, fs filesys, dir string, t *testing.T) {
 	cases, err := fs.ReadDir(filepath.Join(dir, "input"))
 	if err != nil {
 		panic(err)
