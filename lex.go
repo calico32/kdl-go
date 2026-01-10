@@ -5,7 +5,9 @@ func (l *lexer) lexDefault() token {
 	switch ch := l.ch; {
 	case ch == runeEOF:
 		return token{tokenEOF, l.offset, ""}
-	case isIdentStartChar(ch):
+
+	case l.version != Version1 && isIdentStartChar(ch):
+		// v2 unambiguous ident
 		l.next()
 		for isIdentChar(l.ch) {
 			l.next()
@@ -13,17 +15,41 @@ func (l *lexer) lexDefault() token {
 		lit := l.text(start, l.offset)
 		switch lit {
 		case "true", "false", "null", "inf", "-inf", "nan":
-			l.errorf(start, "invalid identifier: %q", lit)
+			l.errorf(start, "invalid identifier: %q (prefix with '#' for keyword or quote for string)", lit)
 		}
 		return token{tokenUnambiguousIdent, start, lit}
+
+	case l.version == Version1 && ch == 'r' && (l.peek() == '"' || l.peek() == '#'):
+		// v1 raw string
+		return l.readV1RawString()
+
+	case l.version == Version1 && (isV1IdentStartChar(ch, false) || (!isDigit(l.peek()) && isV1IdentStartChar(ch, true))):
+		// v1 bare ident
+		l.next()
+		for isV1IdentChar(l.ch) {
+			l.next()
+		}
+		lit := l.text(start, l.offset)
+		switch lit {
+		case "true":
+			return token{tokenTrue, start, lit}
+		case "false":
+			return token{tokenFalse, start, lit}
+		case "null":
+			return token{tokenNull, start, lit}
+		}
+		return token{tokenUnambiguousIdent, start, lit}
+
 	case isUnicodeSpace(ch):
 		l.next()
 		for isUnicodeSpace(l.ch) {
 			l.next()
 		}
 		return token{tokenWS, start, l.text(start, l.offset)}
+
 	case isNewline(ch):
 		return l.readNewline()
+
 	case ch == '/':
 		l.next()
 		if l.ch == '*' {
@@ -53,23 +79,29 @@ func (l *lexer) lexDefault() token {
 	case ch == '{':
 		l.next()
 		return token{tokenLBrace, start, "{"}
+
 	case ch == '}':
 		l.next()
 		return token{tokenRBrace, start, "}"}
+
 	case ch == '(':
 		l.next()
 		return token{tokenLParen, start, "("}
+
 	case ch == ')':
 		l.next()
 		return token{tokenRParen, start, ")"}
+
 	case ch == ';':
 		l.next()
 		return token{tokenSemi, start, ";"}
+
 	case ch == '=':
 		l.next()
 		return token{tokenEqual, start, "="}
 
-	case ch == '#':
+	case l.version != Version1 && ch == '#':
+		// v2 keyword or v2 raw string
 		l.next()
 		if l.ch == '-' || isLetter(l.ch) {
 			l.next()
@@ -101,17 +133,19 @@ func (l *lexer) lexDefault() token {
 	case ch == '"':
 		return l.readQuotedString()
 
-	case isSign(ch) && isDigit(rune(l.peek())):
+	case isSign(ch) && isDigit(l.peek()):
 		return l.readNumber()
 
 	case isDigit(ch):
 		return l.readNumber()
 
-	case isSign(ch) && l.peek() == '.':
+	case l.version != Version1 && isSign(ch) && l.peek() == '.':
+		// v2 dotted-ident
 		// dotted-ident := sign? '.' ((identifier-char - digit) identifier-char*)?
 		l.next() // consume sign
 		fallthrough
-	case ch == '.':
+	case l.version != Version1 && ch == '.':
+		// v2 dotted-ident
 		l.next() // consume '.'
 		if isDigit(l.ch) {
 			// invalid number - integer part is missing
@@ -123,7 +157,8 @@ func (l *lexer) lexDefault() token {
 		}
 		return token{tokenDottedIdent, start, l.text(start, l.offset)}
 
-	case isSign(ch):
+	case l.version != Version1 && isSign(ch):
+		// v2 signed-ident
 		// signed-ident := sign ((identifier-char - digit - '.') identifier-char*)?
 		l.next() // consume sign
 		if isDigit(l.ch) {

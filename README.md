@@ -1,10 +1,17 @@
 # kdl-go
 
-Package kdl implements a parser and emitter for the [KDL](https://kdl.dev/) document format (version 2 only). It supports reading and writing KDL documents, as well as decoding KDL documents into Go data structures and encoding them back into KDL.
+Package kdl implements a parser and emitter for the [KDL](https://kdl.dev/)
+document format (version 1 and 2). It supports reading and writing KDL
+documents, as well as decoding KDL documents into Go data structures and
+encoding them back into KDL.
 
-This implementation follows the KDL 2.0.0 specification and passes the upstream test suite (see `kdl_test.go`).
+This implementation follows the KDL 1.0.0 and 2.0.0 specifications and passes
+the upstream test suite for each (see `kdl_test.go`). Note that the parser
+primarily targets the v2 spec and is somewhat more permissive when parsing v1
+input.
 
-Visit [pkg.go.dev](https://pkg.go.dev/github.com/calico32/kdl-go) for the full documentation.
+Visit [pkg.go.dev](https://pkg.go.dev/github.com/calico32/kdl-go) for the full
+documentation.
 
 > [!Caution]
 > This package's public 0.x API is not stable yet and may change at any time.

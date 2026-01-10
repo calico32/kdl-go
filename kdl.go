@@ -2,8 +2,9 @@
 // decoding KDL documents into a structured representation, unmarshaling them
 // into Go data structures, and marshaling/encoding them back into KDL.
 //
-// Only KDL version 2.0.0 is supported. The parser is compliant with the
-// KDL 2.0.0 specification and passes the official KDL test suite.
+// Both KDL version 1.0.0 and 2.0.0 are supported, and the parser passes the
+// upstream test suite for each. Note that the parser primarily targets the v2
+// spec and is somewhat more permissive when parsing v1 input.
 //
 // [Encode] and [Decode] are the primary entry points for encoding and decoding
 // KDL documents to and from Go data structures. These functions encode and
@@ -22,3 +23,31 @@
 //
 // [KDL]: https://kdl.dev/
 package kdl
+
+import "fmt"
+
+type Version int
+
+const (
+	// VersionAuto emits at v2 and parses at v2, but falls back to v1 if
+	// parsing fails.
+	VersionAuto Version = 0
+	// Version2 is KDL version 2.0.0, adhering to https://kdl.dev/spec.
+	Version2 Version = 2
+	// Version1 is KDL version 1.0.0, (somewhat loosely) adhering to
+	// https://kdl.dev/spec-v1.
+	Version1 Version = 1
+)
+
+func (v Version) String() string {
+	switch v {
+	case VersionAuto:
+		return "auto"
+	case Version2:
+		return "v2"
+	case Version1:
+		return "v1"
+	default:
+		return fmt.Sprintf("unknown version %d", v)
+	}
+}

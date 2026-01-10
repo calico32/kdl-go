@@ -19,7 +19,7 @@ const (
 	tokenLParen
 	tokenRParen
 	tokenSemi
-	tokenUnambiguousIdent
+	tokenUnambiguousIdent // v2 unambiguous ident or v1 bare ident
 	tokenSignedIdent
 	tokenDottedIdent
 	tokenQuotedString
@@ -33,12 +33,12 @@ const (
 	tokenBinary
 	tokenDecimal
 
-	tokenNull
 	tokenInf
 	tokenNegInf
 	tokenNaN
-	tokenTrue
-	tokenFalse
+	tokenNull  // v2 #null or v1 null
+	tokenTrue  // v2 #true or v1 true
+	tokenFalse // v2 #false or v1 false
 
 	tokenSingleLineComment
 	tokenMultiLineCommentStart
@@ -68,7 +68,6 @@ var tokenTypeNames = map[tokenType]string{
 	tokenQuotedMultiLineString:   "<qmstring>",
 	tokenRawString:               "<rstring>",
 	tokenRawMultiLineString:      "<rmstring>",
-	tokenNull:                    "null",
 	tokenEqual:                   "=",
 	tokenHexadecimal:             "<hex>",
 	tokenOctal:                   "<oct>",
@@ -77,6 +76,7 @@ var tokenTypeNames = map[tokenType]string{
 	tokenInf:                     "#inf",
 	tokenNegInf:                  "#-inf",
 	tokenNaN:                     "#nan",
+	tokenNull:                    "#null",
 	tokenTrue:                    "#true",
 	tokenFalse:                   "#false",
 	tokenSingleLineComment:       "<scomment>",
@@ -89,7 +89,7 @@ var tokenTypeNames = map[tokenType]string{
 
 func init() {
 	missingNames := []tokenType{}
-	for i := tokenType(0); i < numTokens; i++ {
+	for i := range numTokens {
 		if _, ok := tokenTypeNames[i]; !ok {
 			missingNames = append(missingNames, i)
 		}

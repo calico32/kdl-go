@@ -1,6 +1,7 @@
 package kdl
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"math/big"
@@ -14,6 +15,7 @@ import (
 // Emit writes the KDL representation of the given Document to the provided
 // writer. By default, the emitter uses an indent of four spaces and standard
 // float formatting. Options can be provided to customize the output.
+//   - [WithVersion] to set the KDL version to emit (default: [Version2]).
 //   - [WithIndent] to set a custom indent string (default: four spaces).
 //   - [WithStringAlwaysQuote] to always quote strings (default: false).
 //   - [WithFloatCapitalExponent] to use capital 'E' for exponents (default: false).
@@ -23,6 +25,9 @@ import (
 //   - [WithFloatExponentPlus] to include '+' for positive exponents (default: false).
 //   - [WithFloatDecimalOrExponent] to always include either a decimal point or exponent part in floats (default: true).
 //     Without this option, integer-like floating points may be reparsed as integers.
+//   - [WithEmitEmptyChildren] to emit an empty children block when a node has no children (default: false). Also
+//     configurable at the node level via [Node.Hints].
+//   - [WithIntegerFormat] to set the format to use for integers (default: [Decimal]).
 func Emit(d *Document, w io.Writer, opts ...EmitterOption) error {
 	e := &emitter{
 		w:      w,
@@ -35,9 +40,12 @@ func Emit(d *Document, w io.Writer, opts ...EmitterOption) error {
 		floatDecimalPoint:      false,
 		floatExponentPlus:      false,
 		floatDecimalOrExponent: true,
+		version:                Version2,
+		integerFormat:          Decimal,
+		emitEmptyChildren:      false,
 	}
 	for _, opt := range opts {
-		opt(e)
+		opt.applyEmitter(e)
 	}
 	return e.emitDocument(d)
 }
@@ -53,6 +61,16 @@ func EmitToString(d *Document, opts ...EmitterOption) (string, error) {
 	return buf.String(), nil
 }
 
+// IntegerFormat specifies the format to use for emitting integers.
+type IntegerFormat int
+
+const (
+	Decimal IntegerFormat = iota
+	Hex
+	Octal
+	Binary
+)
+
 type emitter struct {
 	w           io.Writer
 	indent      string
@@ -65,6 +83,9 @@ type emitter struct {
 	floatDecimalPoint      bool
 	floatExponentPlus      bool
 	floatDecimalOrExponent bool
+	version                Version
+	integerFormat          IntegerFormat
+	emitEmptyChildren      bool
 }
 
 type emitterHints struct {
@@ -73,62 +94,93 @@ type emitterHints struct {
 	EmitEmptyChildren bool
 }
 
-type EmitterOption func(*emitter)
+type EmitterOption interface {
+	applyEmitter(*emitter)
+}
+
+type emitterOptionFunc func(*emitter)
+
+func (f emitterOptionFunc) applyEmitter(e *emitter) {
+	f(e)
+}
 
 // WithIndent sets the indent string for the emitter.
 func WithIndent(s string) EmitterOption {
-	return func(e *emitter) { e.indent = s }
+	return emitterOptionFunc(func(e *emitter) { e.indent = s })
 }
 
 // WithStringAlwaysQuote sets whether to always quote strings.
 func WithStringAlwaysQuote(v bool) EmitterOption {
-	return func(e *emitter) { e.stringAlwaysQuote = v }
+	return emitterOptionFunc(func(e *emitter) { e.stringAlwaysQuote = v })
 }
 
 // WithFloatCapitalExponent sets whether to use capital 'E' for exponents.
 func WithFloatCapitalExponent(v bool) EmitterOption {
-	return func(e *emitter) { e.floatCapitalExponent = v }
+	return emitterOptionFunc(func(e *emitter) { e.floatCapitalExponent = v })
 }
 
 // WithFloatMinExponent sets the minimum exponent for using scientific notation.
 func WithFloatMinExponent(v int) EmitterOption {
-	return func(e *emitter) { e.floatMinExponent = v }
+	return emitterOptionFunc(func(e *emitter) { e.floatMinExponent = v })
 }
 
 // WithFloatPlus sets whether to include '+' for positive floats.
 func WithFloatPlus(v bool) EmitterOption {
-	return func(e *emitter) { e.floatPlus = v }
+	return emitterOptionFunc(func(e *emitter) { e.floatPlus = v })
 }
 
 // WithFloatDecimalPoint sets whether to always include a decimal point in floats.
 func WithFloatDecimalPoint(v bool) EmitterOption {
-	return func(e *emitter) { e.floatDecimalPoint = v }
+	return emitterOptionFunc(func(e *emitter) { e.floatDecimalPoint = v })
 }
 
 // WithFloatExponentPlus sets whether to include '+' for positive exponents.
 func WithFloatExponentPlus(v bool) EmitterOption {
-	return func(e *emitter) { e.floatExponentPlus = v }
+	return emitterOptionFunc(func(e *emitter) { e.floatExponentPlus = v })
 }
 
 // WithFloatDecimalOrExponent sets whether to always include either a decimal
 // point or exponent part in floats.
 func WithFloatDecimalOrExponent(v bool) EmitterOption {
-	return func(e *emitter) { e.floatDecimalOrExponent = v }
+	return emitterOptionFunc(func(e *emitter) { e.floatDecimalOrExponent = v })
 }
 
 // WithTestSuiteFloatOptions applies float emission options that match the
-// upstream KDL test suite expectations. Specifically:
+// upstream KDL 2.0.0 test suite expectations. Specifically:
 //   - Capital 'E' for exponents
 //   - Minimum exponent of 2 (i.e., use scientific notation for exponents >= 2)
 //   - Always include a decimal point
 //   - Always include a '+' for positive exponents
 func WithTestSuiteFloatOptions() EmitterOption {
-	return func(e *emitter) {
+	return emitterOptionFunc(func(e *emitter) {
 		e.floatCapitalExponent = true
 		e.floatMinExponent = 2
 		e.floatDecimalPoint = true
 		e.floatExponentPlus = true
-	}
+	})
+}
+
+// WithIntegerFormat sets the format to use for integers.
+func WithIntegerFormat(f IntegerFormat) EmitterOption {
+	return emitterOptionFunc(func(e *emitter) { e.integerFormat = f })
+}
+
+// WithEmitEmptyChildren sets whether to emit an empty children block when
+// a node has no children.
+func WithEmitEmptyChildren(v bool) EmitterOption {
+	return emitterOptionFunc(func(e *emitter) { e.emitEmptyChildren = v })
+}
+
+type versionOption struct {
+	v Version
+}
+
+func (v versionOption) applyParser(p *parser)   { p.version = v.v }
+func (v versionOption) applyEmitter(e *emitter) { e.version = v.v }
+
+// WithVersion sets the KDL version to parse/emit.
+func WithVersion(v Version) versionOption {
+	return versionOption{v}
 }
 
 func (e *emitter) emit(s string) error {
@@ -160,7 +212,7 @@ func (e *emitter) emitNode(n *Node) error {
 		if err := e.emit("("); err != nil {
 			return err
 		}
-		if err := e.emitString(ty); err != nil {
+		if err := e.emitIdentifier(ty); err != nil {
 			return err
 		}
 		if err := e.emit(")"); err != nil {
@@ -168,7 +220,7 @@ func (e *emitter) emitNode(n *Node) error {
 		}
 	}
 
-	if err := e.emitString(n.name); err != nil {
+	if err := e.emitIdentifier(n.name); err != nil {
 		return err
 	}
 
@@ -187,7 +239,7 @@ func (e *emitter) emitNode(n *Node) error {
 		if err := e.emit(" "); err != nil {
 			return err
 		}
-		if err := e.emitString(p); err != nil {
+		if err := e.emitIdentifier(p); err != nil {
 			return err
 		}
 		if err := e.emit("="); err != nil {
@@ -198,7 +250,7 @@ func (e *emitter) emitNode(n *Node) error {
 		}
 	}
 
-	if len(n.children.Nodes) > 0 || n.hints.EmitEmptyChildren {
+	if len(n.children.Nodes) > 0 || n.hints.EmitEmptyChildren || e.emitEmptyChildren {
 		if err := e.emit(" {\n"); err != nil {
 			return err
 		}
@@ -222,8 +274,37 @@ func (e *emitter) emitNode(n *Node) error {
 	return nil
 }
 
-func (e *emitter) emitString(s string) error {
+func (e *emitter) emitIdentifier(s string) error {
+	if e.version != Version1 {
+		return e.emitString(s)
+	}
+
 	needsQuoting := s == "" || e.stringAlwaysQuote
+	if !needsQuoting {
+		runes := []rune(s)
+		allowDash := len(runes) == 1 || !isDigit(runes[1])
+		for i, r := range runes {
+			if i == 0 {
+				if !isV1IdentStartChar(r, allowDash) {
+					needsQuoting = true
+					break
+				}
+			} else if !isV1IdentChar(r) {
+				needsQuoting = true
+				break
+			}
+		}
+	}
+
+	if needsQuoting {
+		return e.emitString(s)
+	} else {
+		return e.emit(s)
+	}
+}
+
+func (e *emitter) emitString(s string) error {
+	needsQuoting := s == "" || e.stringAlwaysQuote || e.version == Version1
 	if !needsQuoting {
 		for i, r := range s {
 			if i == 0 {
@@ -239,7 +320,7 @@ func (e *emitter) emitString(s string) error {
 	}
 
 	if needsQuoting {
-		return e.emit(`"` + escapeString(s) + `"`)
+		return e.emit(`"` + escapeString(e.version, s) + `"`)
 	} else {
 		return e.emit(s)
 	}
@@ -261,24 +342,83 @@ func (e *emitter) emitValue(v Value) error {
 	case String:
 		return e.emitString(v.String())
 	case Int:
-		return e.emit(strconv.FormatInt(int64(v.Int()), 10))
+		switch e.integerFormat {
+		case Decimal:
+			return e.emit(strconv.FormatInt(int64(v.Int()), 10))
+		case Hex:
+			if v.Int() < 0 {
+				return e.emit(fmt.Sprintf("-0x%x", -v.Int()))
+			}
+			return e.emit(fmt.Sprintf("0x%x", v.Int()))
+		case Octal:
+			if v.Int() < 0 {
+				return e.emit(fmt.Sprintf("-0o%o", -v.Int()))
+			}
+			return e.emit(fmt.Sprintf("0o%o", v.Int()))
+		case Binary:
+			if v.Int() < 0 {
+				return e.emit(fmt.Sprintf("-0b%b", -v.Int()))
+			}
+			return e.emit(fmt.Sprintf("0b%b", v.Int()))
+		default:
+			panic("kdl.Emit: invalid integer format")
+		}
 	case BigInt:
-		return e.emit(v.BigInt().String())
+		if e.integerFormat == Decimal {
+			return e.emit(v.BigInt().String())
+		}
+		var base int
+		var prefix string
+		switch e.integerFormat {
+		case Hex:
+			base = 16
+			prefix = "0x"
+		case Octal:
+			base = 8
+			prefix = "0o"
+		case Binary:
+			base = 2
+			prefix = "0b"
+		default:
+			panic("kdl.Emit: invalid integer format")
+		}
+		s := prefix + v.BigInt().Text(base)
+		if v.BigInt().Sign() < 0 {
+			s = "-" + s
+		}
+		return e.emit(s)
 	case Float:
 		if math.IsNaN(v.Float()) {
-			return e.emit("#nan")
+			if e.version == Version1 {
+				// v1 doesn't have NaN... guess we can emit a string
+				return e.emit(`"nan"`)
+			} else {
+				return e.emit("#nan")
+			}
 		}
 		return e.emitFloat(new(big.Float).SetFloat64(v.Float()))
 	case BigFloat:
 		return e.emitFloat(v.BigFloat())
 	case Bool:
-		if v.Bool() {
-			return e.emit("#true")
+		if e.version == Version1 {
+			if v.Bool() {
+				return e.emit("true")
+			} else {
+				return e.emit("false")
+			}
 		} else {
-			return e.emit("#false")
+			if v.Bool() {
+				return e.emit("#true")
+			} else {
+				return e.emit("#false")
+			}
 		}
 	case Null:
-		return e.emit("#null")
+		if e.version == Version1 {
+			return e.emit("null")
+		} else {
+			return e.emit("#null")
+		}
 	default:
 		return errors.Errorf("unknown value type: %T", v)
 	}
@@ -286,10 +426,19 @@ func (e *emitter) emitValue(v Value) error {
 
 func (e *emitter) emitFloat(f *big.Float) error {
 	if f.IsInf() {
-		if f.Sign() > 0 {
-			return e.emit("#inf")
+		if e.version == Version1 {
+			// v1 doesn't have Inf... guess we can emit a string
+			if f.Sign() > 0 {
+				return e.emit(`"inf"`)
+			} else {
+				return e.emit(`"-inf"`)
+			}
 		} else {
-			return e.emit("#-inf")
+			if f.Sign() > 0 {
+				return e.emit("#inf")
+			} else {
+				return e.emit("#-inf")
+			}
 		}
 	}
 

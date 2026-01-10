@@ -126,8 +126,40 @@ func (l *lexer) readRawString() token {
 	// }
 
 	// consume closing sequence
-	for i := 0; i < len(closingSeq); i++ {
+	for range closingSeq {
 		l.next()
 	}
 	return token{tokenRawString, start, l.text(start+Pos(len(closingSeq)), l.offset-Pos(len(closingSeq)))}
+}
+
+func (l *lexer) readV1RawString() token {
+	start := l.offset
+	l.next() // consume 'r'
+	hashes := 0
+	for l.ch == '#' {
+		hashes++
+		l.next()
+	}
+	if l.ch != '"' {
+		l.errorf(start, "invalid raw string (expected '\"' after %d '#', got %q)", hashes, l.ch)
+		return token{tokenIllegal, start, l.text(start, l.offset)}
+	}
+	l.next() // opening quote
+
+	closingSeq := `"` + strings.Repeat("#", hashes)
+	for l.ch != runeEOF && !l.match(closingSeq) {
+		l.next()
+	}
+	if l.ch == runeEOF {
+		l.errorf(start, "unterminated raw string")
+		return token{tokenIllegal, start, l.text(start, l.offset)}
+	}
+
+	// consume closing sequence
+	for range closingSeq {
+		l.next()
+	}
+
+	// +1 for 'r'
+	return token{tokenRawString, start, l.text(start+1+Pos(len(closingSeq)), l.offset-Pos(len(closingSeq)))}
 }

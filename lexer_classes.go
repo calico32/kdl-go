@@ -1,5 +1,6 @@
 package kdl
 
+// v2 only
 func isIdentStartChar(ch rune) bool {
 	return isIdentChar(ch) && !isDigit(ch) && !isSign(ch) && ch != '.'
 }
@@ -20,6 +21,7 @@ func isSign(ch rune) bool {
 	return ch == '+' || ch == '-'
 }
 
+// v2 only
 func isIdentChar(ch rune) bool {
 	if isUnicodeSpace(ch) || isNewline(ch) || isDisallowedChar(ch) {
 		return false
@@ -33,9 +35,37 @@ func isIdentChar(ch rune) bool {
 	}
 }
 
+func isV1IdentStartChar(ch rune, allowSign bool) bool {
+	// https://kdl.dev/spec-v1/#non-initial-characters
+	if '0' <= ch && ch <= '9' {
+		return false
+	}
+	if !allowSign && isSign(ch) {
+		return false
+	}
+	return isV1IdentChar(ch)
+}
+
+func isV1IdentChar(ch rune) bool {
+	// https://kdl.dev/spec-v1/#non-identifier-characters
+	if ch <= 0x20 || ch >= 0x10FFFF {
+		return false
+	}
+	if isUnicodeSpace(ch) || isNewline(ch) {
+		return false
+	}
+	switch ch {
+	case '\\', '/', '(', ')', '{', '}', '<', '>', ';', '[', ']', '=', ',', '"':
+		return false
+	default:
+		return true
+	}
+}
+
 func isUnicodeSpace(ch rune) bool {
 	// 3.17. Whitespace
 	// https://kdl.dev/spec/#section-3.17
+	// https://kdl.dev/spec-v1/#whitespace (same as v2)
 	switch ch {
 	case 0x0009, // Character Tabulation
 		0x0020, // Space
@@ -64,12 +94,13 @@ func isUnicodeSpace(ch rune) bool {
 func isNewline(ch rune) bool {
 	// 3.18. Newline
 	// https://kdl.dev/spec/#section-3.18
+	// https://kdl.dev/spec-v1/#newline (same as v2 except for vertical tab U+000B)
 	switch ch {
 	// CRLF case is handled elsewhere
 	case 0x000D, // Carriage Return
 		0x000A, // Line Feed
 		0x0085, // Next Line
-		0x000B, // Vertical Tab
+		0x000B, // Vertical Tab (v2 only but was supposed to be in v1, probably okay to include anyway)
 		0x000C, // Form Feed
 		0x2028, // Line Separator
 		0x2029: // Paragraph Separator

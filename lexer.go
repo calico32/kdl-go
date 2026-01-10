@@ -26,6 +26,7 @@ type lexer struct {
 	errors        []error
 	errorHandlers []func(Pos, error)
 	trace         io.Writer
+	version       Version
 }
 
 type lexerMode int
@@ -40,10 +41,11 @@ const (
 	runeBOM = 0xfeff
 )
 
-func newLexer(name string, src []byte, trace io.Writer) *lexer {
+func newLexer(name string, src []byte, trace io.Writer, version Version) *lexer {
 	l := &lexer{
-		file:  newFile(name, src),
-		trace: trace,
+		file:    newFile(name, src),
+		trace:   trace,
+		version: version,
 	}
 	l.next()
 	if l.ch == runeBOM {
@@ -122,12 +124,13 @@ func (l *lexer) next() {
 	}
 }
 
-func (l *lexer) peek() byte {
+func (l *lexer) peek() rune {
 	if l.readOffset >= Pos(len(l.file.src)) {
 		return 0
 	}
 
-	return l.file.src[l.readOffset]
+	ch, _ := utf8.DecodeRune(l.file.src[l.readOffset:])
+	return ch
 }
 
 func (l *lexer) match(str string) bool {

@@ -11,7 +11,7 @@ import (
 
 // Parse parses a KDL document from the provided reader and returns it.
 func Parse(r io.Reader, opts ...ParseOption) (*Document, error) {
-	return ParseNamed("<input>", r)
+	return ParseNamed("<input>", r, opts...)
 }
 
 // ParseNamed is like [Parse], but allows specifying a name for the input
@@ -21,37 +21,68 @@ func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error
 	if err != nil {
 		return nil, err
 	}
-	l := newLexer(name, src, nil)
-	p := newParser(l, nil)
-	for _, opt := range opts {
-		opt(p)
+	l := newLexer(name, src, nil, VersionAuto)
+	p := newParser(l, nil, opts...)
+	doc, err := p.ParseDocument()
+	if err == nil {
+		return doc, nil
 	}
-	return p.ParseDocument()
+	if p.version == VersionAuto {
+		// try again as v1
+		opts = append(opts, WithVersion(Version1))
+		l = newLexer(name, src, nil, Version1)
+		p = newParser(l, nil, opts...)
+		doc, err = p.ParseDocument()
+		if err == nil {
+			return doc, nil
+		}
+		if detectV1(string(src)) {
+			// looks like v1, the v1 error will be more useful
+			return nil, err
+		}
+		// return the v2 error
+		return nil, err
+	}
+
+	return nil, err
 }
 
-type ParseOption func(*parser)
+type ParseOption interface {
+	applyParser(*parser)
+}
+
+type parseOptionFunc func(*parser)
+
+func (f parseOptionFunc) applyParser(p *parser) {
+	f(p)
+}
 
 func WithParseTrace(w io.Writer) ParseOption {
-	return func(p *parser) {
+	return parseOptionFunc(func(p *parser) {
 		p.trace = w
-	}
+	})
 }
 
 func WithLocations(v bool) ParseOption {
-	return func(p *parser) {
+	return parseOptionFunc(func(p *parser) {
 		p.withLocations = v
-	}
+	})
 }
 
-func newParser(lex *lexer, trace io.Writer) *parser {
+func newParser(lex *lexer, trace io.Writer, options ...ParseOption) *parser {
 	p := &parser{
 		lexer:         lex,
 		trace:         trace,
 		withLocations: true,
+		version:       VersionAuto,
 	}
 	lex.AddErrorHandler(func(pos Pos, err error) {
 		p.errors = append(p.errors, errors.Wrapf(err, "lex error at %s", p.lexer.File().Location(pos)))
 	})
+	for _, opt := range options {
+		opt.applyParser(p)
+	}
+	p.lexer.version = p.version
 	p.next()
 	p.next()
 	return p
@@ -64,14 +95,12 @@ type parser struct {
 	errors        []error
 	trace         io.Writer
 	withLocations bool
+	version       Version
 }
 
 func (p *parser) errorf(pos Pos, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	err := errors.Errorf("parse error at %s: %s", p.lexer.File().Location(pos), msg)
-	if p.trace != nil {
-		_, _ = fmt.Fprintf(p.trace, "%+v\n", err)
-	}
 	p.errors = append(p.errors, err)
 }
 
@@ -82,6 +111,9 @@ func (p *parser) errorExpected(expected string) {
 func (p *parser) next() {
 	p.token = p.nextToken
 	tok := p.lexer.Next()
+	if p.trace != nil {
+		_, _ = fmt.Fprintf(p.trace, "lex %v: %q\n", tok.Type, tok.Text)
+	}
 	p.nextToken = tok
 }
 
@@ -107,6 +139,58 @@ func (p *parser) ParseDocument() (*Document, error) {
 	}
 	return d, nil
 }
+
+// detectV1 returns true if the input appears to be KDL v1 via heuristics.
+// Lifted directly from kdl-rs (Apache 2.0 license):
+// https://github.com/kdl-org/kdl-rs/blob/268f3a2d00d400877cc85530b85dbb145f0b2dfb/src/document.rs#L504-L519
+func detectV1(input string) bool {
+	if newline := strings.IndexRune(input, '\n'); newline != -1 {
+		if strings.Contains(input[:newline], "kdl-version 1") {
+			return true
+		}
+	}
+	if strings.Contains(input, " true") ||
+		strings.Contains(input, " false") ||
+		strings.Contains(input, " null") ||
+		strings.Contains(input, "r#\"") ||
+		strings.Contains(input, " \"\n") ||
+		strings.Contains(input, " \"\r\n") {
+		return true
+	}
+
+	return false
+}
+
+// detectV2 returns true if the input appears to be KDL v2 via heuristics.
+// Lifted directly from kdl-rs (Apache 2.0 license):
+// https://github.com/kdl-org/kdl-rs/blob/268f3a2d00d400877cc85530b85dbb145f0b2dfb/src/document.rs#L472-L502
+// func detectV2(input string) bool {
+// 	for line := range strings.SplitSeq(input, "\n") {
+// 		if strings.Contains(line, "kdl-version 2") ||
+// 			strings.Contains(line, "#true") ||
+// 			strings.Contains(line, "#false") ||
+// 			strings.Contains(line, "#null") ||
+// 			strings.Contains(line, "#inf") ||
+// 			strings.Contains(line, "#-inf") ||
+// 			strings.Contains(line, "#nan") ||
+// 			strings.Contains(line, " #\"") ||
+// 			strings.Contains(line, "\"\"\"") {
+// 			return true
+// 		}
+// 		if !strings.Contains(line, "\"") {
+// 			fields := strings.Fields(line)[1:]
+// 			for _, field := range fields {
+// 				if len(field) > 0 {
+// 					if !isSign(rune(field[0])) && !isDigit(rune(field[0])) {
+// 						return true
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	return false
+// }
 
 func (p *parser) parseNodes() (nodes []*Node) {
 	p.skipLineSpace()
@@ -246,6 +330,7 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 			tokenQuotedString, tokenQuotedMultiLineString,
 			tokenRawString, tokenRawMultiLineString:
 			// string: could be prop name or arg value
+			typ := p.token.Type
 			s := p.parseString()
 			savepoint := p.savepoint()
 			p.skipNodeSpace()
@@ -261,6 +346,9 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 				// arg
 				p.restorepoint(savepoint)
 				if !slashdash {
+					if p.version == Version1 && typ == tokenUnambiguousIdent {
+						p.errorf(p.token.Pos, "unexpected identifier %s (must be quoted)", s)
+					}
 					n.args = append(n.args, NewString(s))
 				}
 			}
@@ -353,7 +441,13 @@ func (p *parser) parseValue() Value {
 	var value Value
 	pos := p.token.Pos
 	switch typ := tok.Type; typ {
-	case tokenUnambiguousIdent, tokenSignedIdent, tokenDottedIdent,
+	case tokenUnambiguousIdent:
+		// only valid as a value in v2
+		if p.version == Version1 {
+			p.errorf(tok.Pos, "unexpected identifier (must be quoted)")
+		}
+		fallthrough
+	case tokenSignedIdent, tokenDottedIdent,
 		tokenQuotedString, tokenQuotedMultiLineString,
 		tokenRawString, tokenRawMultiLineString:
 		str := p.parseString()

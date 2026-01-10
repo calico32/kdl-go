@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func unescapeString(s string) (string, error) {
+func unescapeString(v Version, s string) (string, error) {
 	type unescapeState int
 	const (
 		normal unescapeState = iota
@@ -88,6 +88,10 @@ func unescapeString(s string) (string, error) {
 				state = unicode
 				continue
 			default:
+				if ch == '/' && v == Version1 {
+					result.WriteRune(0x002F)
+					break
+				}
 				if isUnicodeSpace(ch) || isNewline(ch) {
 					state = whitespace
 					continue
@@ -116,7 +120,7 @@ func unescapeString(s string) (string, error) {
 	return result.String(), nil
 }
 
-func escapeString(s string) string {
+func escapeString(v Version, s string) string {
 	var result strings.Builder
 	for _, ch := range s {
 		switch ch {
@@ -137,7 +141,9 @@ func escapeString(s string) string {
 		case 0x0020:
 			result.WriteString(` `) // no need to escape space
 		default:
-			if isDisallowedChar(ch) {
+			if ch == 0x002F && v == Version1 {
+				result.WriteString(`\/`)
+			} else if isDisallowedChar(ch) {
 				result.WriteString(fmt.Sprintf(`\u{%X}`, ch))
 			} else {
 				result.WriteRune(ch)

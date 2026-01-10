@@ -2,3 +2,7 @@
     path = internal/test/kdl2
     url = https://github.com/kdl-org/kdl.git
 
+[submodule "kdl1"]
+	path = internal/test/kdl1
+	url = https://github.com/kdl-org/kdl.git
+	branch = release/v1

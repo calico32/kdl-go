@@ -54,7 +54,7 @@ func (l *lexer) readQuotedString() token {
 				}
 				content.WriteString(ln)
 			}
-			unescaped, err := unescapeString(content.String())
+			unescaped, err := unescapeString(l.version, content.String())
 			if err != nil {
 				l.errorf(start, "invalid multi-line string: %s", err)
 			}
@@ -100,7 +100,7 @@ func (l *lexer) readQuotedString() token {
 	// single-line quoted string
 	for !l.readStringChar(false) {
 	}
-	content, err := unescapeString(l.text(start+1, l.offset-1))
+	content, err := unescapeString(l.version, l.text(start+1, l.offset-1))
 	if err != nil {
 		l.errorf(start, "invalid string: %s", err)
 	}
@@ -114,6 +114,14 @@ func (l *lexer) readStringChar(multiline bool) (terminal bool) {
 		switch l.ch {
 		case '"', '\\', 'b', 'f', 'n', 'r', 't', 's':
 			l.next()
+			return false
+		case '/':
+			if l.version == Version1 {
+				// OK
+				l.next()
+				return false
+			}
+			l.errorf(l.offset, "invalid escape sequence in string: \\/ (v1 only)")
 			return false
 		case 'u':
 			// \u{hex-unicode}
@@ -174,7 +182,7 @@ func (l *lexer) readStringChar(multiline bool) (terminal bool) {
 
 	case isNewline(ch):
 		l.next()
-		if multiline {
+		if multiline || l.version == Version1 {
 			return false
 		}
 

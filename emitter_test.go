@@ -80,7 +80,7 @@ func TestEmitFloat(t *testing.T) {
 			name: "floatPlus option",
 			val:  NewFloat(1.23),
 			opts: []EmitterOption{
-				func(e *emitter) { e.floatPlus = true },
+				WithFloatPlus(true),
 			},
 			expected: "node +1.23\n",
 		},
@@ -88,7 +88,7 @@ func TestEmitFloat(t *testing.T) {
 			name: "floatPlus option negative",
 			val:  NewFloat(-1.23),
 			opts: []EmitterOption{
-				func(e *emitter) { e.floatPlus = true },
+				WithFloatPlus(true),
 			},
 			expected: "node -1.23\n",
 		},
