@@ -162,10 +162,18 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
 		reflect.Bool:
-		if len(node.args) != 1 {
+		var value Value
+		if target.Kind() == reflect.Bool && tag.flags&presence != 0 && len(node.args) == 0 {
+			value = trueValue
+		} else if len(node.args) == 1 {
+			value = node.args[0]
+		} else {
 			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Kind())
 		}
-		return d.unmarshalValue(node.args[0], tag, target)
+		if (d.strict || tag.flags&strict != 0) && (len(node.props) > 0 || len(node.children.Nodes) > 0) {
+			return errors.Wrapf(ErrStrict, "unused properties/children for node %q (unmarshaling into %s)", node.name, target.Kind())
+		}
+		return d.unmarshalValue(value, tag, target)
 
 	case reflect.Struct:
 		return d.unmarshalNodeIntoStruct(node, target)

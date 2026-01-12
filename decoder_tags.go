@@ -21,6 +21,7 @@ const (
 	children                        // consumes all remaining children
 	property                        // consumes a named property only (do not match children)
 	properties                      // consumes all remaining properties
+	presence                        // if a child with this name is present, set to true (only for bool fields)
 )
 
 func (tag tagFlags) String() string {
@@ -52,6 +53,9 @@ func (tag tagFlags) String() string {
 	if tag&properties != 0 {
 		parts = append(parts, "properties")
 	}
+	if tag&presence != 0 {
+		parts = append(parts, "presence")
+	}
 	return strings.Join(parts, ",")
 }
 
@@ -75,6 +79,8 @@ func lookupFlag(name string) tagFlags {
 		return property
 	case "properties", "props":
 		return properties
+	case "presence":
+		return presence
 	default:
 		return 0
 	}
@@ -119,15 +125,16 @@ func parseStructTag(str string) (t structTag, err error) {
 	}
 
 	allowedCombinations := map[tagFlags][]tagFlags{
-		omitzero:   {strict, arguments, property, properties, child, children, multiple},
-		strict:     {omitzero, argument, arguments, property, properties, child, children, multiple},
+		omitzero:   {strict, arguments, property, properties, child, children, multiple, presence},
+		strict:     {omitzero, argument, arguments, property, properties, child, children, multiple, presence},
 		argument:   {strict},
 		arguments:  {omitzero, strict},
 		property:   {omitzero, strict},
 		properties: {omitzero, strict, children},
-		child:      {omitzero, strict, multiple},
+		child:      {omitzero, strict, multiple, presence},
 		children:   {omitzero, strict, properties},
 		multiple:   {omitzero, strict, child},
+		presence:   {omitzero, strict, child},
 	}
 
 	for thisFlag, allowed := range allowedCombinations {

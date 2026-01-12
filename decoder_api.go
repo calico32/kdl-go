@@ -64,9 +64,11 @@ var (
 //   - children: indicates that the field should receive any child nodes not
 //     mapped to other fields. Valid only on slice, array, or map types. Can only
 //     be used once per struct.
+//   - presence: indicates that for bool fields, the presence of a child node
+//     with no arguments is interpreted as true. Valid only on bool fields.
 //
-// Two additional tags, omitempty and omitzero, can be used to control
-// marshaling behavior but are ignored during unmarshaling.
+// An additional tag, omitzero, can be used to control marshaling behavior but
+// is ignored during unmarshaling.
 //
 // For example:
 //
@@ -80,6 +82,7 @@ var (
 //	    Hostname string            `kdl:"hostname,child,strict"`
 //	    Port     int               `kdl:"port,child"`
 //	    Extra    map[string]string `kdl:",children"`
+//	    Internal bool              `kdl:"internal,presence"`
 //	}
 //
 // # Values

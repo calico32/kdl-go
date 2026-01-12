@@ -19,6 +19,7 @@ type Person struct {
 	Name  string            `kdl:"name"`
 	Age   int               `kdl:"age"`
 	Props map[string]string `kdl:",properties,children"`
+	Bool  bool              `kdl:"bool,presence"`
 }
 
 type Value struct {
@@ -92,10 +93,18 @@ var decoderTests = []DecoderTest{
 		person {
 			name Bob
 			age 25
-		}`,
+			bool
+		}
+		person {
+			name Charlie
+			age 30
+			bool #false
+		}
+		`,
 		&People{Persons: []Person{
-			{Name: "Alice", Age: 30, Props: map[string]string{}},
-			{Name: "Bob", Age: 25, Props: map[string]string{}},
+			{Name: "Alice", Age: 30, Bool: false, Props: map[string]string{}},
+			{Name: "Bob", Age: 25, Bool: true, Props: map[string]string{}},
+			{Name: "Charlie", Age: 30, Bool: false, Props: map[string]string{}},
 		}},
 	},
 	{
