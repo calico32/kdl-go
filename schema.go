@@ -1223,6 +1223,20 @@ func findNodeDef(name string, defs []*SchemaNodeDef) *SchemaNodeDef {
 	return wildcard
 }
 
+// FindSchemaNode returns the node def whose Name matches name, falling back to
+// a wildcard def (one with an empty Name) if present. Returns nil if neither
+// is found.
+func FindSchemaNode(name string, defs []*SchemaNodeDef) *SchemaNodeDef {
+	return findNodeDef(name, defs)
+}
+
+// FindSchemaProp returns the prop def whose Key matches key, falling back to
+// a wildcard def (one with an empty Key) if present. Returns nil if neither
+// is found.
+func FindSchemaProp(key string, defs []*SchemaPropDef) *SchemaPropDef {
+	return findPropDef(key, defs)
+}
+
 // ResolveNodePath walks the schema from root, descending one level per element
 // of path. At each level the corresponding def is found via FindSchemaNode
 // (exact name first, wildcard otherwise) and its merged Children.Nodes are
