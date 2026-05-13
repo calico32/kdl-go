@@ -84,3 +84,9 @@ func main() {
 	}
 }
 ```
+
+## License
+
+kdl-go is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+The KDL Schema schema (schema/kdl-schema.kdl) is licensed under CC-BY-SA-4.0. See [schema/LICENSE](schema/LICENSE) for details.
