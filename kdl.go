@@ -21,6 +21,9 @@
 // Use [NewDocument], [NewNode], [NewKV], [NewValue], and related functions and
 // methods to create KDL documents, nodes, key-value nodes, and values.
 //
+// Other features include pretty-printing via [Format], AST traversal via
+// [Walk], and KDL Schema validation via [ParseSchema] and [ValidateDocument].
+//
 // [KDL]: https://kdl.dev/
 package kdl
 

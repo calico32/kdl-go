@@ -10,6 +10,13 @@ the upstream test suite for each (see `kdl_test.go`). Note that the parser
 primarily targets the v2 spec and is somewhat more permissive when parsing v1
 input.
 
+Other features include:
+
+-   Pretty-printing via `Format`
+-   KDL Schema validation via `ParseSchema` & `ValidateDocument`
+-   Panic-mode recovery and multi-error diagnostics via `ParseWithDiagnostics`
+-   AST traversal via `Walk`
+
 Visit [pkg.go.dev](https://pkg.go.dev/github.com/calico32/kdl-go) for the full
 documentation.
 
