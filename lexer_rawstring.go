@@ -15,7 +15,7 @@ func (l *lexer) readRawString() token {
 
 	if l.ch != '"' {
 		l.errorf(start, "invalid raw string (expected '\"' after %d '#', got %q)", hashCount, l.ch)
-		return token{tokenIllegal, start, l.text(start, l.offset)}
+		return l.tok(tokenIllegal, start, l.text(start, l.offset))
 	}
 	l.next() // first quote
 
@@ -44,7 +44,7 @@ func (l *lexer) readRawString() token {
 			}
 			if l.ch == runeEOF {
 				l.errorf(start, "unterminated multi-line raw string")
-				return token{tokenIllegal, start, l.text(start, l.offset)}
+				return l.tok(tokenIllegal, start, l.text(start, l.offset))
 			}
 			line := l.text(lineStart, l.offset)
 			if isNewline(l.ch) {
@@ -98,7 +98,7 @@ func (l *lexer) readRawString() token {
 					content.WriteString(strings.TrimPrefix(ln, prefix))
 				}
 			}
-			return token{tokenRawMultiLineString, start, content.String()}
+			return l.tok(tokenRawMultiLineString, start, content.String())
 		}
 
 	}
@@ -111,11 +111,11 @@ func (l *lexer) readRawString() token {
 	}
 	if l.ch == runeEOF {
 		l.errorf(start, "unterminated raw string")
-		return token{tokenIllegal, start, l.text(start, l.offset)}
+		return l.tok(tokenIllegal, start, l.text(start, l.offset))
 	}
 	if isNewline(l.ch) {
 		l.errorf(start, "unexpected newline in single-line raw string")
-		return token{tokenIllegal, start, l.text(start, l.offset)}
+		return l.tok(tokenIllegal, start, l.text(start, l.offset))
 	}
 
 	// TODO: necessary? if there are three quotes in a row, it would have been
@@ -129,7 +129,7 @@ func (l *lexer) readRawString() token {
 	for range closingSeq {
 		l.next()
 	}
-	return token{tokenRawString, start, l.text(start+Pos(len(closingSeq)), l.offset-Pos(len(closingSeq)))}
+	return l.tok(tokenRawString, start, l.text(start+Pos(len(closingSeq)), l.offset-Pos(len(closingSeq))))
 }
 
 func (l *lexer) readV1RawString() token {
@@ -142,7 +142,7 @@ func (l *lexer) readV1RawString() token {
 	}
 	if l.ch != '"' {
 		l.errorf(start, "invalid raw string (expected '\"' after %d '#', got %q)", hashes, l.ch)
-		return token{tokenIllegal, start, l.text(start, l.offset)}
+		return l.tok(tokenIllegal, start, l.text(start, l.offset))
 	}
 	l.next() // opening quote
 
@@ -152,7 +152,7 @@ func (l *lexer) readV1RawString() token {
 	}
 	if l.ch == runeEOF {
 		l.errorf(start, "unterminated raw string")
-		return token{tokenIllegal, start, l.text(start, l.offset)}
+		return l.tok(tokenIllegal, start, l.text(start, l.offset))
 	}
 
 	// consume closing sequence
@@ -161,5 +161,5 @@ func (l *lexer) readV1RawString() token {
 	}
 
 	// +1 for 'r'
-	return token{tokenRawString, start, l.text(start+1+Pos(len(closingSeq)), l.offset-Pos(len(closingSeq)))}
+	return l.tok(tokenRawString, start, l.text(start+1+Pos(len(closingSeq)), l.offset-Pos(len(closingSeq))))
 }

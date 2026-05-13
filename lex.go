@@ -4,7 +4,7 @@ func (l *lexer) lexDefault() token {
 	start := l.offset
 	switch ch := l.ch; {
 	case ch == runeEOF:
-		return token{tokenEOF, l.offset, ""}
+		return l.tok(tokenEOF, l.offset, "")
 
 	case l.version != Version1 && isIdentStartChar(ch):
 		// v2 unambiguous ident
@@ -17,7 +17,7 @@ func (l *lexer) lexDefault() token {
 		case "true", "false", "null", "inf", "-inf", "nan":
 			l.errorf(start, "invalid identifier: %q (prefix with '#' for keyword or quote for string)", lit)
 		}
-		return token{tokenUnambiguousIdent, start, lit}
+		return l.tok(tokenUnambiguousIdent, start, lit)
 
 	case l.version == Version1 && ch == 'r' && (l.peek() == '"' || l.peek() == '#'):
 		// v1 raw string
@@ -32,20 +32,20 @@ func (l *lexer) lexDefault() token {
 		lit := l.text(start, l.offset)
 		switch lit {
 		case "true":
-			return token{tokenTrue, start, lit}
+			return l.tok(tokenTrue, start, lit)
 		case "false":
-			return token{tokenFalse, start, lit}
+			return l.tok(tokenFalse, start, lit)
 		case "null":
-			return token{tokenNull, start, lit}
+			return l.tok(tokenNull, start, lit)
 		}
-		return token{tokenUnambiguousIdent, start, lit}
+		return l.tok(tokenUnambiguousIdent, start, lit)
 
 	case isUnicodeSpace(ch):
 		l.next()
 		for isUnicodeSpace(l.ch) {
 			l.next()
 		}
-		return token{tokenWS, start, l.text(start, l.offset)}
+		return l.tok(tokenWS, start, l.text(start, l.offset))
 
 	case isNewline(ch):
 		return l.readNewline()
@@ -55,7 +55,7 @@ func (l *lexer) lexDefault() token {
 		if l.ch == '*' {
 			l.next()
 			l.pushMode(modeMultiLineComment)
-			return token{tokenMultiLineCommentStart, start, "/*"}
+			return l.tok(tokenMultiLineCommentStart, start, "/*")
 		}
 		if l.ch == '/' {
 			l.next()
@@ -65,40 +65,40 @@ func (l *lexer) lexDefault() token {
 			if isNewline(l.ch) {
 				l.next()
 			}
-			return token{tokenSingleLineComment, start, l.text(start, l.offset)}
+			return l.tok(tokenSingleLineComment, start, l.text(start, l.offset))
 		}
 		if l.ch == '-' {
 			l.next()
-			return token{tokenSlashdash, start, "/-"}
+			return l.tok(tokenSlashdash, start, "/-")
 		}
 
 	case ch == '\\':
 		l.next()
-		return token{tokenBackslash, start, "\\"}
+		return l.tok(tokenBackslash, start, "\\")
 
 	case ch == '{':
 		l.next()
-		return token{tokenLBrace, start, "{"}
+		return l.tok(tokenLBrace, start, "{")
 
 	case ch == '}':
 		l.next()
-		return token{tokenRBrace, start, "}"}
+		return l.tok(tokenRBrace, start, "}")
 
 	case ch == '(':
 		l.next()
-		return token{tokenLParen, start, "("}
+		return l.tok(tokenLParen, start, "(")
 
 	case ch == ')':
 		l.next()
-		return token{tokenRParen, start, ")"}
+		return l.tok(tokenRParen, start, ")")
 
 	case ch == ';':
 		l.next()
-		return token{tokenSemi, start, ";"}
+		return l.tok(tokenSemi, start, ";")
 
 	case ch == '=':
 		l.next()
-		return token{tokenEqual, start, "="}
+		return l.tok(tokenEqual, start, "=")
 
 	case l.version != Version1 && ch == '#':
 		// v2 keyword or v2 raw string
@@ -111,20 +111,20 @@ func (l *lexer) lexDefault() token {
 			lit := l.text(start, l.offset)
 			switch lit {
 			case "#inf":
-				return token{tokenInf, start, lit}
+				return l.tok(tokenInf, start, lit)
 			case "#-inf":
-				return token{tokenNegInf, start, lit}
+				return l.tok(tokenNegInf, start, lit)
 			case "#nan":
-				return token{tokenNaN, start, lit}
+				return l.tok(tokenNaN, start, lit)
 			case "#true":
-				return token{tokenTrue, start, lit}
+				return l.tok(tokenTrue, start, lit)
 			case "#false":
-				return token{tokenFalse, start, lit}
+				return l.tok(tokenFalse, start, lit)
 			case "#null":
-				return token{tokenNull, start, lit}
+				return l.tok(tokenNull, start, lit)
 			default:
 				l.errorf(start, "invalid keyword: %q", lit)
-				return token{tokenIllegal, start, lit}
+				return l.tok(tokenIllegal, start, lit)
 			}
 		}
 
@@ -150,12 +150,12 @@ func (l *lexer) lexDefault() token {
 		if isDigit(l.ch) {
 			// invalid number - integer part is missing
 			l.errorf(start, "invalid number: missing integer part before decimal point")
-			return token{tokenIllegal, start, l.text(start, l.offset)}
+			return l.tok(tokenIllegal, start, l.text(start, l.offset))
 		}
 		for isIdentChar(l.ch) {
 			l.next()
 		}
-		return token{tokenDottedIdent, start, l.text(start, l.offset)}
+		return l.tok(tokenDottedIdent, start, l.text(start, l.offset))
 
 	case l.version != Version1 && isSign(ch):
 		// v2 signed-ident
@@ -164,18 +164,18 @@ func (l *lexer) lexDefault() token {
 		if isDigit(l.ch) {
 			// invalid number - integer part is missing
 			l.errorf(start, "invalid number: missing integer part before decimal point")
-			return token{tokenIllegal, start, l.text(start, l.offset)}
+			return l.tok(tokenIllegal, start, l.text(start, l.offset))
 		}
 		for isIdentChar(l.ch) {
 			l.next()
 		}
-		return token{tokenSignedIdent, start, l.text(start, l.offset)}
+		return l.tok(tokenSignedIdent, start, l.text(start, l.offset))
 
 	}
 
 	l.errorf(l.offset, "unexpected character: %c (U+%04X)", l.ch, l.ch)
 	l.next()
-	return token{tokenIllegal, start, l.text(start, l.offset)}
+	return l.tok(tokenIllegal, start, l.text(start, l.offset))
 }
 
 func (l *lexer) readNumber() token {
@@ -227,16 +227,16 @@ func (l *lexer) readNumber() token {
 
 	if !hasDigits {
 		l.errorf(start, "invalid number: missing digits")
-		return token{tokenIllegal, start, l.text(start, l.offset)}
+		return l.tok(tokenIllegal, start, l.text(start, l.offset))
 	}
 
 	switch base {
 	case 2:
-		return token{tokenBinary, start, l.text(start, l.offset)}
+		return l.tok(tokenBinary, start, l.text(start, l.offset))
 	case 8:
-		return token{tokenOctal, start, l.text(start, l.offset)}
+		return l.tok(tokenOctal, start, l.text(start, l.offset))
 	case 16:
-		return token{tokenHexadecimal, start, l.text(start, l.offset)}
+		return l.tok(tokenHexadecimal, start, l.text(start, l.offset))
 	}
 
 	if l.ch == '.' {
@@ -254,7 +254,7 @@ func (l *lexer) readNumber() token {
 		l.readDigits("exponent")
 	}
 
-	return token{tokenDecimal, start, l.text(start, l.offset)}
+	return l.tok(tokenDecimal, start, l.text(start, l.offset))
 }
 
 func (l *lexer) readDigits(part string) {
@@ -287,39 +287,41 @@ func (l *lexer) readNewline() token {
 	if ch == '\r' && l.ch == '\n' {
 		l.next()
 	}
-	return token{tokenNewline, start, l.text(start, l.offset)}
+	return l.tok(tokenNewline, start, l.text(start, l.offset))
 }
 
 func (l *lexer) lexMultiLineComment() token {
 	switch ch := l.ch; ch {
 	case runeEOF:
 		l.errorf(l.offset, "unterminated multi-line comment")
-		return token{tokenEOF, l.offset, ""}
+		return l.tok(tokenEOF, l.offset, "")
 	case '*':
 		if l.peek() == '/' {
 			start := l.offset
 			l.next()
 			l.next()
 			l.popMode()
-			return token{tokenMultiLineCommentEnd, start, "*/"}
+			return l.tok(tokenMultiLineCommentEnd, start, "*/")
 		}
+		start := l.offset
 		l.next()
-		return token{tokenMultiLineCommentContent, l.offset, "*"}
+		return l.tok(tokenMultiLineCommentContent, start, "*")
 	case '/':
 		if l.peek() == '*' {
 			start := l.offset
 			l.next()
 			l.next()
 			l.pushMode(modeMultiLineComment)
-			return token{tokenMultiLineCommentStart, start, "/*"}
+			return l.tok(tokenMultiLineCommentStart, start, "/*")
 		}
+		start := l.offset
 		l.next()
-		return token{tokenMultiLineCommentContent, l.offset, "/"}
+		return l.tok(tokenMultiLineCommentContent, start, "/")
 	}
 
 	start := l.offset
 	for l.ch != runeEOF && l.ch != '*' && l.ch != '/' {
 		l.next()
 	}
-	return token{tokenMultiLineCommentContent, start, l.text(start, l.offset)}
+	return l.tok(tokenMultiLineCommentContent, start, l.text(start, l.offset))
 }

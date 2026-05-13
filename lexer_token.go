@@ -113,7 +113,8 @@ func (t tokenType) String() string {
 }
 
 type token struct {
-	Type tokenType
-	Pos  Pos
-	Text string
+	Type   tokenType
+	Pos    Pos // start (inclusive)
+	EndPos Pos // end (exclusive)
+	Text   string
 }

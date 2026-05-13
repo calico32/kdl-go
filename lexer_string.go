@@ -30,7 +30,7 @@ func (l *lexer) readQuotedString() token {
 			}
 			if l.ch == runeEOF {
 				l.errorf(start, "unterminated multi-line string")
-				return token{tokenIllegal, start, l.text(start, l.offset)}
+				return l.tok(tokenIllegal, start, l.text(start, l.offset))
 			}
 			line := l.text(lineStart, l.offset)
 			if isNewline(l.ch) {
@@ -60,9 +60,6 @@ func (l *lexer) readQuotedString() token {
 			}
 			content.Reset()
 			unescapedLines := strings.Split(unescaped, "\n")
-			if len(lines) == 0 {
-				return token{tokenQuotedMultiLineString, start, unescaped}
-			}
 
 			prefix := unescapedLines[len(unescapedLines)-1]
 			prefixHasNonwhitespace := false
@@ -93,7 +90,7 @@ func (l *lexer) readQuotedString() token {
 					content.WriteString(strings.TrimPrefix(unescapedLines[i], prefix))
 				}
 			}
-			return token{tokenQuotedMultiLineString, start, content.String()}
+			return l.tok(tokenQuotedMultiLineString, start, content.String())
 		}
 	}
 
@@ -104,7 +101,7 @@ func (l *lexer) readQuotedString() token {
 	if err != nil {
 		l.errorf(start, "invalid string: %s", err)
 	}
-	return token{tokenQuotedString, start, content}
+	return l.tok(tokenQuotedString, start, content)
 }
 
 func (l *lexer) readStringChar(multiline bool) (terminal bool) {

@@ -83,6 +83,12 @@ func (l *lexer) AddErrorHandler(fn func(Pos, error)) {
 	l.errorHandlers = append(l.errorHandlers, fn)
 }
 
+// tok creates a token spanning [start, l.offset). l.offset is always positioned
+// one past the last consumed character, making it the correct exclusive end.
+func (l *lexer) tok(tt tokenType, start Pos, text string) token {
+	return token{tt, start, l.offset, text}
+}
+
 func (l *lexer) File() *file {
 	return l.file
 }
