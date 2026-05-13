@@ -56,6 +56,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer out.Close()
 
 	// Encode the config back to KDL
 	err = kdl.Encode(config, out)
