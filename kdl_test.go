@@ -156,6 +156,39 @@ func isAcceptableMismatch(caseName string, version kdl.Version, actual string) b
 	return false
 }
 
+func TestNodeEndLocation(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		wantEnd int // byte offset of EndLocation
+	}{
+		{"name only", "mynode\n", len("mynode")},
+		{"string arg", `node "val"` + "\n", len(`node "val"`)},
+		{"number arg", "node 42\n", len("node 42")},
+		{"bool arg", "node #true\n", len("node #true")},
+		{"prop", "node k=42\n", len("node k=42")},
+		{"children", "node {\n    child\n}\n", len("node {\n    child\n}")},
+		{"inline children", "node { child }\n", len("node { child }")},
+		{"slashed arg last", `node "real" /- "slashed"` + "\n", len(`node "real" /- "slashed"`)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, err := kdl.Parse(strings.NewReader(tc.src))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if len(doc.Nodes) == 0 {
+				t.Fatal("no nodes")
+			}
+			node := doc.Nodes[0]
+			got := int(node.EndLocation().Offset)
+			if got != tc.wantEnd {
+				t.Errorf("EndLocation().Offset = %d, want %d (src: %q)", got, tc.wantEnd, tc.src)
+			}
+		})
+	}
+}
+
 func timeout[T any](duration time.Duration, f func() (T, error)) (result T, err error) {
 	done := make(chan struct{})
 	go func() {

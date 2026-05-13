@@ -54,26 +54,77 @@ func (k ValueKind) String() string {
 // may also have an optional type annotation, which can be used to provide
 // additional context about the value's type.
 type Value struct {
-	ty        string
-	typeValid bool
-	kind      ValueKind
-	location  Location
-	raw       any
+	typ            string
+	typeValid      bool
+	kind           ValueKind
+	location       Location
+	endLocation    Location
+	typeAnnotStart Location
+	typeAnnotEnd   Location
+	raw            any
+	// numericLiteral holds the exact source text for parsed numeric literals
+	// (integers, floats in any base/format). Empty for programmatically created
+	// values.
+	numericLiteral string
 }
 
-func (v Value) TypeAnnotation() (string, bool) { return v.ty, v.typeValid }
+func (v Value) TypeAnnotation() (string, bool) { return v.typ, v.typeValid }
 func (v Value) Kind() ValueKind                { return v.kind }
 func (v Value) RawValue() any                  { return v.raw }
 func (v Value) Location() Location             { return v.location }
 
+// EndLocation returns the location of the end (exclusive) of the value token,
+// not including any type annotation. Returns a zero Location when location
+// tracking is off.
+func (v Value) EndLocation() Location { return v.endLocation }
+
+// TypeAnnotationRange returns the source range of the type annotation content
+// (the identifier inside the parentheses, not the parens themselves). ok is
+// false when no type annotation is present or location tracking is off.
+func (v Value) TypeAnnotationRange() (start, end Location, ok bool) {
+	if !v.typeValid || v.typeAnnotStart.Line == 0 {
+		return
+	}
+	return v.typeAnnotStart, v.typeAnnotEnd, true
+}
+
 func (v Value) WithTypeAnnotation(ty string, valid bool) Value {
-	v.ty = ty
+	v.typ = ty
 	v.typeValid = valid
 	return v
 }
 
 func (v Value) WithLocation(loc Location) Value {
 	v.location = loc
+	return v
+}
+
+func (v Value) WithEndLocation(loc Location) Value {
+	v.endLocation = loc
+	return v
+}
+
+func (v Value) WithTypeAnnotationRange(start, end Location) Value {
+	v.typeAnnotStart = start
+	v.typeAnnotEnd = end
+	return v
+}
+
+// NumericLiteral returns the original source text of the numeric literal, if
+// this value was produced by parsing source code. Returns ("", false) for
+// programmatically created values.
+func (v Value) NumericLiteral() (string, bool) {
+	if v.numericLiteral == "" {
+		return "", false
+	}
+	return v.numericLiteral, true
+}
+
+// WithNumericLiteral stores the original source text of a numeric literal.
+// This is called by the parser; it can also be used when constructing Values
+// that should round-trip to a specific textual form.
+func (v Value) WithNumericLiteral(s string) Value {
+	v.numericLiteral = s
 	return v
 }
 

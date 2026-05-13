@@ -5,8 +5,6 @@ import (
 	"io"
 	"math/big"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // Parse parses a KDL document from the provided reader and returns it.
@@ -21,30 +19,68 @@ func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error
 	if err != nil {
 		return nil, err
 	}
-	l := newLexer(name, src, nil, VersionAuto)
-	p := newParser(l, nil, opts...)
-	doc, err := p.ParseDocument()
-	if err == nil {
-		return doc, nil
-	}
-	if p.version == VersionAuto {
-		// try again as v1
-		opts = append(opts, WithVersion(Version1))
-		l = newLexer(name, src, nil, Version1)
-		p = newParser(l, nil, opts...)
-		doc, err = p.ParseDocument()
-		if err == nil {
-			return doc, nil
-		}
-		if detectV1(string(src)) {
-			// looks like v1, the v1 error will be more useful
-			return nil, err
-		}
-		// return the v2 error
+	result, err := parseWithDiagnosticsFromBytes(name, src, opts...)
+	if err != nil {
 		return nil, err
 	}
+	if result.HasErrors() {
+		for _, d := range result.Diagnostics {
+			if d.Severity == SeverityError {
+				return nil, fmt.Errorf("parse error at %s: %s", d.Start, d.Message)
+			}
+		}
+	}
+	return result.Document, nil
+}
 
-	return nil, err
+// ParseWithDiagnostics parses a KDL document and returns a [ParseResult]
+// containing a (possibly partial) document and all diagnostics. Unlike [Parse],
+// it never returns an error for parse problems — check [ParseResult.HasErrors]
+// or inspect [ParseResult.Diagnostics] instead.
+func ParseWithDiagnostics(r io.Reader, opts ...ParseOption) (*ParseResult, error) {
+	return ParseNamedWithDiagnostics("<input>", r, opts...)
+}
+
+// ParseNamedWithDiagnostics is like [ParseWithDiagnostics] but lets you name
+// the input source so that locations in diagnostics reference that name.
+func ParseNamedWithDiagnostics(name string, r io.Reader, opts ...ParseOption) (*ParseResult, error) {
+	src, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return parseWithDiagnosticsFromBytes(name, src, opts...)
+}
+
+func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption) (*ParseResult, error) {
+	l := newLexer(name, src, nil, VersionAuto)
+	p := newParser(l, nil, opts...)
+	doc, diags := p.ParseDocument()
+
+	hasErrors := func(ds []Diagnostic) bool {
+		for _, d := range ds {
+			if d.Severity == SeverityError {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !hasErrors(diags) || p.version != VersionAuto {
+		return &ParseResult{Document: doc, Diagnostics: diags}, nil
+	}
+
+	// try again as v1
+	v1Opts := append(append([]ParseOption{}, opts...), WithVersion(Version1))
+	l2 := newLexer(name, src, nil, Version1)
+	p2 := newParser(l2, nil, v1Opts...)
+	doc2, diags2 := p2.ParseDocument()
+	if !hasErrors(diags2) {
+		return &ParseResult{Document: doc2, Diagnostics: diags2}, nil
+	}
+	if detectV1(string(src)) {
+		return &ParseResult{Document: doc2, Diagnostics: diags2}, nil
+	}
+	return &ParseResult{Document: doc, Diagnostics: diags}, nil
 }
 
 type ParseOption interface {
@@ -77,7 +113,13 @@ func newParser(lex *lexer, trace io.Writer, options ...ParseOption) *parser {
 		version:       VersionAuto,
 	}
 	lex.AddErrorHandler(func(pos Pos, err error) {
-		p.errors = append(p.errors, errors.Wrapf(err, "lex error at %s", p.lexer.File().Location(pos)))
+		loc := p.lexer.File().Location(pos)
+		p.diagnostics = append(p.diagnostics, Diagnostic{
+			Start:    loc,
+			End:      loc,
+			Severity: SeverityError,
+			Message:  "lex error: " + err.Error(),
+		})
 	})
 	for _, opt := range options {
 		opt.applyParser(p)
@@ -89,25 +131,35 @@ func newParser(lex *lexer, trace io.Writer, options ...ParseOption) *parser {
 }
 
 type parser struct {
-	lexer         *lexer
-	token         token
-	nextToken     token
-	errors        []error
-	trace         io.Writer
-	withLocations bool
-	version       Version
+	lexer          *lexer
+	token          token
+	nextToken      token
+	diagnostics    []Diagnostic
+	parserErrCount int
+	trace          io.Writer
+	withLocations  bool
+	version        Version
 }
 
 func (p *parser) errorf(pos Pos, format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	err := errors.Errorf("parse error at %s: %s", p.lexer.File().Location(pos), msg)
-	p.errors = append(p.errors, err)
+	p.errorfRange(pos, p.token.EndPos, format, args...)
+}
+
+func (p *parser) errorfRange(startPos, endPos Pos, format string, args ...any) {
+	p.diagnostics = append(p.diagnostics, Diagnostic{
+		Start:    p.lexer.File().Location(startPos),
+		End:      p.lexer.File().Location(endPos),
+		Severity: SeverityError,
+		Message:  fmt.Sprintf(format, args...),
+	})
+	p.parserErrCount++
 }
 
 func (p *parser) errorExpected(expected string) {
 	tok := p.token
-	p.errorf(tok.Pos, "expected %s, got %s", expected, tok.Type)
+	p.errorfRange(tok.Pos, tok.EndPos, "expected %s, got %s", expected, tok.Type)
 }
+
 func (p *parser) next() {
 	p.token = p.nextToken
 	tok := p.lexer.Next()
@@ -120,24 +172,21 @@ func (p *parser) next() {
 func (p *parser) expect(tt tokenType) token {
 	tok := p.token
 	if tok.Type != tt {
-		p.errorf(tok.Pos, "expected token type %v, got %v", tt, tok.Type)
+		p.errorfRange(tok.Pos, tok.EndPos, "expected token type %v, got %v", tt, tok.Type)
 	}
 	p.next()
 	return tok
 }
 
-// ParseDocument parses a KDL document and returns it.
+// ParseDocument parses a KDL document and returns it along with any diagnostics.
 //
 //	document := bom? version? nodes
 //	nodes := (line-space* node)* line-space*
-func (p *parser) ParseDocument() (*Document, error) {
+func (p *parser) ParseDocument() (*Document, []Diagnostic) {
 	d := &Document{}
-	d.Nodes = p.parseNodes()
+	d.Nodes, d.TrailingComments = p.parseNodes()
 	p.expect(tokenEOF)
-	if len(p.errors) > 0 {
-		return nil, p.errors[0]
-	}
-	return d, nil
+	return d, p.diagnostics
 }
 
 // detectV1 returns true if the input appears to be KDL v1 via heuristics.
@@ -192,28 +241,128 @@ func detectV1(input string) bool {
 // 	return false
 // }
 
-func (p *parser) parseNodes() (nodes []*Node) {
-	p.skipLineSpace()
+// syncToNodeBoundary skips tokens until a node boundary without consuming it.
+// On return, the current token is always newline, semi, }, or EOF.
+func (p *parser) syncToNodeBoundary() {
+	for {
+		switch p.token.Type {
+		case tokenEOF, tokenNewline, tokenSemi, tokenRBrace:
+			return
+		}
+		p.next()
+	}
+}
+
+func (p *parser) parseNodes() (nodes []*Node, trailing []Comment) {
+	// collect comments and blank lines before the first node
+	pendingComments, pendingBlankLine := p.collectBetweenNodes(0)
+
 	for p.token.Type != tokenEOF && p.token.Type != tokenRBrace {
-		node := p.parseNode(true)
+		// top-level slashdash-commented node
+		if p.token.Type == tokenSlashdash {
+			slashStart := p.token.Pos
+			slashEnd := p.token.EndPos
+			p.next() // consume /-
+			p.skipLineSpace()
+			slashedNode := p.parseNode()
+			if slashedNode != nil {
+				c := Comment{kind: CommentSlashdash, node: slashedNode}
+				if p.withLocations {
+					c.start = p.lexer.File().Location(slashStart)
+					c.end = p.lexer.File().Location(slashEnd)
+				}
+				pendingComments = append(pendingComments, c)
+			}
+			// consume terminator
+			switch p.token.Type {
+			case tokenSingleLineComment:
+				if slashedNode != nil {
+					c := Comment{kind: CommentSingleLine, text: p.token.Text}
+					if p.withLocations {
+						c.start = p.lexer.File().Location(p.token.Pos)
+						c.end = p.lexer.File().Location(p.token.EndPos)
+					}
+					slashedNode.trailingComment = &c
+				}
+				p.next()
+				more, blank := p.collectBetweenNodes(1)
+				pendingComments = append(pendingComments, more...)
+				if blank {
+					pendingBlankLine = true
+				}
+			case tokenNewline, tokenSemi:
+				wasNewline := p.token.Type == tokenNewline
+				p.next()
+				start := 0
+				if wasNewline {
+					start = 1
+				}
+				more, blank := p.collectBetweenNodes(start)
+				pendingComments = append(pendingComments, more...)
+				if blank {
+					pendingBlankLine = true
+				}
+			case tokenEOF, tokenRBrace:
+				// nothing to consume — outer loop will exit
+			default:
+				p.errorExpected("node terminator")
+				p.syncToNodeBoundary()
+			}
+			continue
+		}
+
+		node := p.parseNode()
 		if node != nil {
+			node.leadingComments = pendingComments
+			node.blankLineBefore = pendingBlankLine
+			pendingComments = nil
+			pendingBlankLine = false
 			nodes = append(nodes, node)
 		}
+
 		switch p.token.Type {
-		case tokenNewline, tokenSingleLineComment, tokenSemi, tokenEOF:
+		case tokenSingleLineComment:
+			if node != nil {
+				c := Comment{kind: CommentSingleLine, text: p.token.Text}
+				if p.withLocations {
+					c.start = p.lexer.File().Location(p.token.Pos)
+					c.end = p.lexer.File().Location(p.token.EndPos)
+				}
+				node.trailingComment = &c
+			}
 			p.next()
-			p.skipLineSpace()
-		case tokenRBrace:
-			// OK, no terminator needed
-		case tokenIllegal:
-			// abort
-			p.next() // make progress
-			return nodes
+			// single-line comment token already includes its newline, so pass
+			// initialNewlines=1 to correctly detect a blank line after it
+			pendingComments, pendingBlankLine = p.collectBetweenNodes(1)
+		case tokenNewline, tokenSemi:
+			wasNewline := p.token.Type == tokenNewline
+			p.next()
+			start := 0
+			if wasNewline {
+				start = 1
+			}
+			pendingComments, pendingBlankLine = p.collectBetweenNodes(start)
+		case tokenEOF, tokenRBrace:
+			// no terminator needed
 		default:
+			// leftover token after node (or after failed recovery). record
+			// error, sync to next boundary, then consume it to make progress
 			p.errorExpected("node terminator")
+			p.syncToNodeBoundary()
+			wasNewline := p.token.Type == tokenNewline
+			if wasNewline || p.token.Type == tokenSemi {
+				p.next()
+			}
+			start := 0
+			if wasNewline {
+				start = 1
+			}
+			pendingComments, pendingBlankLine = p.collectBetweenNodes(start)
 		}
 	}
-	return nodes
+
+	trailing = pendingComments
+	return
 }
 
 // readSlashdash reads a slashdash.
@@ -241,24 +390,44 @@ func (p *parser) readSlashdash() {
 //	value := type? node-space* (string | number | keyword)
 //	type := '(' node-space* string node-space* ')'
 //	node-terminator := single-line-comment | newline | ';' | eof
-func (p *parser) parseNode(allowSlashdash bool) *Node {
-	n := &Node{
+func (p *parser) parseNode() (n *Node) {
+	n = &Node{
 		props: make(map[string]Value),
 	}
-	if allowSlashdash && p.token.Type == tokenSlashdash {
-		p.readSlashdash()
-		p.parseNode(false)
-		return nil
+	var lastEndPos Pos
+	if p.withLocations {
+		defer func() {
+			if n != nil && lastEndPos > 0 {
+				n.endLoc = p.lexer.File().Location(lastEndPos)
+			}
+		}()
 	}
 	if p.token.Type == tokenLParen {
-		n.ty = p.parseType()
+		savedParserErrs := p.parserErrCount
+		var contentStart, contentEnd Pos
+		n.typ, contentStart, contentEnd = p.parseTypeRange()
 		n.typeValid = true
+		if p.withLocations {
+			n.typeAnnotStart = p.lexer.File().Location(contentStart)
+			n.typeAnnotEnd = p.lexer.File().Location(contentEnd)
+		}
+		if p.parserErrCount > savedParserErrs {
+			p.syncToNodeBoundary()
+			return nil
+		}
 	}
 	p.skipNodeSpace()
+	lastEndPos = p.token.EndPos
 	if p.withLocations {
 		n.loc = p.lexer.File().Location(p.token.Pos)
+		n.nameEndLoc = p.lexer.File().Location(p.token.EndPos)
 	}
+	savedParserErrs := p.parserErrCount
 	n.name = p.parseString()
+	if p.parserErrCount > savedParserErrs {
+		p.syncToNodeBoundary()
+		return nil
+	}
 
 	slashdashChildrenEncountered := false
 	childrenEncountered := false
@@ -282,6 +451,7 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 		}
 
 		slashdash := false
+		var slashStart, slashEnd Pos
 
 		switch p.token.Type {
 		case tokenEOF, tokenNewline, tokenSingleLineComment, tokenSemi, tokenRBrace:
@@ -293,6 +463,8 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 		}
 
 		if p.token.Type == tokenSlashdash {
+			slashStart = p.token.Pos
+			slashEnd = p.token.EndPos
 			p.readSlashdash()
 			slashdash = true
 		}
@@ -306,14 +478,56 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 		// children
 		if p.token.Type == tokenLBrace {
 			p.next() // consume LBrace
-			nodes := p.parseNodes()
-			p.expect(tokenRBrace)
+			// detect whether the children block was inline in source:
+			// inline: { child1; child2 } — first token after { is not a newline
+			// multiline: {\n  child\n} — first token after { is a newline
+			wasInline := p.token.Type != tokenNewline
+			nodes, childTrailing := p.parseNodes()
+
+			if p.token.Type == tokenRBrace {
+				lastEndPos = p.token.EndPos
+				p.next()
+			} else {
+				// missing closing brace — record error, store what we have, return
+				p.errorfRange(p.token.Pos, p.token.EndPos, "expected token type }, got %v", p.token.Type)
+				if !slashdash {
+					childrenEncountered = true
+					n.children.Nodes = nodes
+					n.children.TrailingComments = childTrailing
+					n.childrenInline = &wasInline
+				} else {
+					slashdashChildrenEncountered = true
+					sd := InlineSlashdash{
+						kind:     InlineSlashdashChildren,
+						children: Document{Nodes: nodes, TrailingComments: childTrailing},
+					}
+					sd.childrenInline = &wasInline
+					if p.withLocations {
+						sd.slashdashStart = p.lexer.File().Location(slashStart)
+						sd.slashdashEnd = p.lexer.File().Location(slashEnd)
+					}
+					n.inlineSlashdashes = append(n.inlineSlashdashes, sd)
+				}
+				return n
+			}
 
 			if !slashdash {
 				childrenEncountered = true
 				n.children.Nodes = nodes
+				n.children.TrailingComments = childTrailing
+				n.childrenInline = &wasInline
 			} else {
 				slashdashChildrenEncountered = true
+				sd := InlineSlashdash{
+					kind:     InlineSlashdashChildren,
+					children: Document{Nodes: nodes, TrailingComments: childTrailing},
+				}
+				sd.childrenInline = &wasInline
+				if p.withLocations {
+					sd.slashdashStart = p.lexer.File().Location(slashStart)
+					sd.slashdashEnd = p.lexer.File().Location(slashEnd)
+				}
+				n.inlineSlashdashes = append(n.inlineSlashdashes, sd)
 			}
 			continue
 		}
@@ -331,6 +545,8 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 			tokenRawString, tokenRawMultiLineString:
 			// string: could be prop name or arg value
 			typ := p.token.Type
+			keyStart := p.token.Pos
+			keyEnd := p.token.EndPos
 			s := p.parseString()
 			savepoint := p.savepoint()
 			p.skipNodeSpace()
@@ -338,35 +554,98 @@ func (p *parser) parseNode(allowSlashdash bool) *Node {
 				// prop
 				p.next() // consume Equal
 				p.skipNodeSpace()
+				savedParserErrs := p.parserErrCount
 				val := p.parseValue()
+				if p.parserErrCount > savedParserErrs {
+					p.syncToNodeBoundary()
+					return n
+				}
+				lastEndPos = val.endLocation.Offset
 				if !slashdash {
 					n.AddProperty(s, val)
+					if p.withLocations {
+						n.setPropertyKeyLocation(s,
+							p.lexer.File().Location(keyStart),
+							p.lexer.File().Location(keyEnd))
+					}
+				} else {
+					sd := InlineSlashdash{
+						kind:           InlineSlashdashProp,
+						afterPropCount: len(n.propOrder),
+						propKey:        s,
+						propVal:        val,
+					}
+					if p.withLocations {
+						sd.slashdashStart = p.lexer.File().Location(slashStart)
+						sd.slashdashEnd = p.lexer.File().Location(slashEnd)
+						sd.propKeyStart = p.lexer.File().Location(keyStart)
+						sd.propKeyEnd = p.lexer.File().Location(keyEnd)
+					}
+					n.inlineSlashdashes = append(n.inlineSlashdashes, sd)
 				}
 			} else {
 				// arg
 				p.restorepoint(savepoint)
+				lastEndPos = keyEnd
 				if !slashdash {
 					if p.version == Version1 && typ == tokenUnambiguousIdent {
 						p.errorf(p.token.Pos, "unexpected identifier %s (must be quoted)", s)
 					}
-					n.args = append(n.args, NewString(s))
+					arg := NewString(s)
+					if p.withLocations {
+						arg = arg.WithLocation(p.lexer.File().Location(keyStart))
+						arg = arg.WithEndLocation(p.lexer.File().Location(keyEnd))
+					}
+					n.args = append(n.args, arg)
+					n.entries = append(n.entries, nodeEntryArg)
+				} else {
+					arg := NewString(s)
+					if p.withLocations {
+						arg = arg.WithLocation(p.lexer.File().Location(keyStart))
+						arg = arg.WithEndLocation(p.lexer.File().Location(keyEnd))
+					}
+					sd := InlineSlashdash{
+						kind:          InlineSlashdashArg,
+						afterArgCount: len(n.args),
+						argValue:      arg,
+					}
+					if p.withLocations {
+						sd.slashdashStart = p.lexer.File().Location(slashStart)
+						sd.slashdashEnd = p.lexer.File().Location(slashEnd)
+					}
+					n.inlineSlashdashes = append(n.inlineSlashdashes, sd)
 				}
 			}
 
 		default:
 			if p.token.Type == tokenEOF {
 				if slashdash {
-					p.errorf(p.token.Pos, "expected value after slashdash")
+					p.errorfRange(p.token.Pos, p.token.EndPos, "expected value after slashdash")
 					return n
 				}
+				return n
 			}
+			savedParserErrs := p.parserErrCount
 			val := p.parseValue()
-			if val == (Value{}) {
-				p.next()
-				continue
+			if p.parserErrCount > savedParserErrs {
+				p.syncToNodeBoundary()
+				return n
 			}
+			lastEndPos = val.endLocation.Offset
 			if !slashdash {
 				n.args = append(n.args, val)
+				n.entries = append(n.entries, nodeEntryArg)
+			} else {
+				sd := InlineSlashdash{
+					kind:          InlineSlashdashArg,
+					afterArgCount: len(n.args),
+					argValue:      val,
+				}
+				if p.withLocations {
+					sd.slashdashStart = p.lexer.File().Location(slashStart)
+					sd.slashdashEnd = p.lexer.File().Location(slashEnd)
+				}
+				n.inlineSlashdashes = append(n.inlineSlashdashes, sd)
 			}
 		}
 	}
@@ -392,16 +671,18 @@ func (p *parser) restorepoint(savepoint savepoint) {
 	p.lexer.Restore(savepoint.lexerState)
 }
 
-// parseType parses a type annotation and returns the unquoted string value.
-//
-//	type := '(' node-space* string node-space* ')'
-func (p *parser) parseType() string {
+// parseTypeRange parses a type annotation and also returns the byte positions
+// of the content token (the identifier, not the surrounding parens).
+// contentStart is inclusive, contentEnd is exclusive.
+func (p *parser) parseTypeRange() (s string, contentStart, contentEnd Pos) {
 	p.expect(tokenLParen)
 	p.skipNodeSpace()
-	str := p.parseString()
+	contentStart = p.token.Pos
+	contentEnd = p.token.EndPos
+	s = p.parseString()
 	p.skipNodeSpace()
 	p.expect(tokenRParen)
-	return str
+	return
 }
 
 // parseString parses a string and returns its value.
@@ -431,8 +712,9 @@ func (p *parser) parseString() string {
 func (p *parser) parseValue() Value {
 	var typeAnnot string
 	var typeAnnotPresent bool
+	var typeAnnotContentStart, typeAnnotContentEnd Pos
 	if p.token.Type == tokenLParen {
-		typeAnnot = p.parseType()
+		typeAnnot, typeAnnotContentStart, typeAnnotContentEnd = p.parseTypeRange()
 		typeAnnotPresent = true
 		p.skipNodeSpace()
 	}
@@ -440,7 +722,7 @@ func (p *parser) parseValue() Value {
 	tok := p.token
 	var value Value
 	pos := p.token.Pos
-	switch typ := tok.Type; typ {
+	switch tok.Type {
 	case tokenUnambiguousIdent:
 		// only valid as a value in v2
 		if p.version == Version1 {
@@ -464,12 +746,15 @@ func (p *parser) parseValue() Value {
 	case tokenInf:
 		p.next()
 		value = infValue
+		value.numericLiteral = tok.Text
 	case tokenNegInf:
 		p.next()
 		value = negInfValue
+		value.numericLiteral = tok.Text
 	case tokenNaN:
 		p.next()
 		value = nanValue
+		value.numericLiteral = tok.Text
 	case tokenDecimal, tokenHexadecimal, tokenOctal, tokenBinary:
 		value = p.parseNumber()
 	default:
@@ -480,13 +765,21 @@ func (p *parser) parseValue() Value {
 	value = value.WithTypeAnnotation(typeAnnot, typeAnnotPresent)
 	if p.withLocations {
 		value = value.WithLocation(p.lexer.File().Location(pos))
+		value = value.WithEndLocation(p.lexer.File().Location(tok.EndPos))
+		if typeAnnotPresent {
+			value = value.WithTypeAnnotationRange(
+				p.lexer.File().Location(typeAnnotContentStart),
+				p.lexer.File().Location(typeAnnotContentEnd),
+			)
+		}
 	}
 	return value
 }
 
 // parseNumber parses a KDL numeric literal and returns it.
 func (p *parser) parseNumber() Value {
-	digits := p.token.Text
+	literal := p.token.Text
+	digits := literal
 	base := 10
 	fp := false
 	switch p.token.Type {
@@ -517,9 +810,9 @@ func (p *parser) parseNumber() Value {
 		}
 		f64, prec := f.Float64()
 		if prec == big.Exact {
-			return NewFloat(f64)
+			return NewFloat(f64).WithNumericLiteral(literal)
 		} else {
-			return NewBigFloat(&f)
+			return NewBigFloat(&f).WithNumericLiteral(literal)
 		}
 	}
 
@@ -532,8 +825,8 @@ func (p *parser) parseNumber() Value {
 		return NewNull()
 	}
 	if i.IsInt64() {
-		return NewInt(int(i.Int64()))
+		return NewInt(int(i.Int64())).WithNumericLiteral(literal)
 	} else {
-		return NewBigInt(&i)
+		return NewBigInt(&i).WithNumericLiteral(literal)
 	}
 }

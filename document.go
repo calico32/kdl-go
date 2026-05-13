@@ -3,6 +3,9 @@ package kdl
 // A Document is a collection of nodes.
 type Document struct {
 	Nodes []*Node
+	// TrailingComments holds comments that appear after the last node in the
+	// document (or children block).
+	TrailingComments []Comment
 }
 
 // NewDocument creates a new KDL document with the given nodes.

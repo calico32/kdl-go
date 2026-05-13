@@ -53,6 +53,7 @@ func Set[K keyType](node *Node, key K, value Value) {
 	case string:
 		if !slices.Contains(node.propOrder, key) {
 			node.propOrder = append(node.propOrder, key)
+			node.entries = append(node.entries, nodeEntryProp)
 		}
 		node.props[key] = value
 	case int:
@@ -63,6 +64,7 @@ func Set[K keyType](node *Node, key K, value Value) {
 			// Extend the Arguments slice to accommodate the new index
 			for i := len(node.args); i <= key; i++ {
 				node.args = append(node.args, NewNull())
+				node.entries = append(node.entries, nodeEntryArg)
 			}
 		}
 		node.args[key] = value

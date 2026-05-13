@@ -1,5 +1,7 @@
 package kdl
 
+import "strings"
+
 // skipWS skips whitespace and multi-line comments until a different token is
 // found.
 //
@@ -27,6 +29,30 @@ func (p *parser) skipLineSpace() {
 			p.readLineSpace()
 		default:
 			return
+		}
+	}
+}
+
+// skipLineSpaceBlank is like skipLineSpace but returns true if a blank line was
+// encountered (two or more consecutive newlines, ignoring comments and whitespace).
+func (p *parser) skipLineSpaceBlank() bool {
+	return p.skipLineSpaceBlankFrom(0)
+}
+
+// skipLineSpaceBlankFrom is like skipLineSpaceBlank but starts the newline
+// count at initialNewlines. Pass 1 when the caller already consumed a newline
+// terminator so that a single additional newline correctly signals a blank line.
+func (p *parser) skipLineSpaceBlankFrom(initialNewlines int) bool {
+	newlines := initialNewlines
+	for {
+		switch p.token.Type {
+		case tokenNewline:
+			newlines++
+			p.next()
+		case tokenSingleLineComment, tokenWS, tokenBackslash, tokenMultiLineCommentStart:
+			p.readLineSpace()
+		default:
+			return newlines >= 2
 		}
 	}
 }
@@ -114,5 +140,73 @@ func (p *parser) readMultiLineComment() {
 	}
 	if x > 0 {
 		p.errorf(p.token.Pos, "unterminated multi-line comment")
+	}
+}
+
+// readMultiLineCommentText reads a multi-line comment and returns its full raw text
+// (e.g. "/* foo /* nested */ bar */"), including the opening "/*".
+func (p *parser) readMultiLineCommentText() string {
+	var sb strings.Builder
+	sb.WriteString("/*")
+	p.next() // consume tokenMultiLineCommentStart
+	depth := 1
+	for depth > 0 && p.token.Type != tokenEOF {
+		sb.WriteString(p.token.Text)
+		switch p.token.Type {
+		case tokenMultiLineCommentStart:
+			depth++
+		case tokenMultiLineCommentEnd:
+			depth--
+		}
+		p.next()
+	}
+	if depth > 0 {
+		p.errorf(p.token.Pos, "unterminated multi-line comment")
+	}
+	return sb.String()
+}
+
+// collectBetweenNodes collects single-line and multi-line comments from line-space,
+// skipping whitespace and tracking newlines. initialNewlines is the count of newlines
+// already consumed before this call (pass 1 when the caller already consumed a newline
+// terminator, so that one more newline correctly signals a blank line).
+// Returns the collected comments and whether a blank line (≥2 consecutive newlines) was seen.
+func (p *parser) collectBetweenNodes(initialNewlines int) (comments []Comment, blankLine bool) {
+	newlines := initialNewlines
+	for {
+		switch p.token.Type {
+		case tokenNewline:
+			newlines++
+			p.next()
+		case tokenWS:
+			p.next()
+		case tokenBackslash:
+			p.readEscline()
+		case tokenSingleLineComment:
+			c := Comment{kind: CommentSingleLine, text: p.token.Text}
+			if p.withLocations {
+				c.start = p.lexer.File().Location(p.token.Pos)
+				c.end = p.lexer.File().Location(p.token.EndPos)
+			}
+			comments = append(comments, c)
+			p.next()
+		case tokenMultiLineCommentStart:
+			startPos := p.token.Pos
+			text := p.readMultiLineCommentText()
+			c := Comment{kind: CommentMultiLine, text: text}
+			if p.withLocations {
+				c.start = p.lexer.File().Location(startPos)
+				c.end = p.lexer.File().Location(startPos + Pos(len(text)))
+			}
+			comments = append(comments, c)
+			// Consume the newline that ends the comment's own line without
+			// counting it toward blank-line detection. A subsequent newline
+			// (after this consumed one) is the real blank-line signal.
+			if p.token.Type == tokenNewline {
+				p.next()
+			}
+		default:
+			return comments, newlines >= 2
+		}
 	}
 }
