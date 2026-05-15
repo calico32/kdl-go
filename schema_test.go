@@ -52,54 +52,80 @@ func noErrors(t *testing.T, diags []kdl.Diagnostic) {
 
 func TestExtractSchemaDirective(t *testing.T) {
 	tests := []struct {
-		name    string
-		content string
-		want    string
-		wantOk  bool
+		name      string
+		content   string
+		want      string
+		wantFound bool
+		wantErr   bool
 	}{
 		{
-			name:    "quoted path before node",
-			content: `/- kdl-schema "./my-schema.kdl"` + "\nnode1\n",
-			want:    "./my-schema.kdl",
-			wantOk:  true,
+			name:      "quoted path before node",
+			content:   `/- kdl-schema "./my-schema.kdl"` + "\nnode1\n",
+			want:      "./my-schema.kdl",
+			wantFound: true,
 		},
 		{
-			name:    "quoted path with spaces",
-			content: `/- kdl-schema "path/with spaces/schema.kdl"` + "\nnode1\n",
-			want:    "path/with spaces/schema.kdl",
-			wantOk:  true,
+			name:      "quoted path with spaces",
+			content:   `/- kdl-schema "path/with spaces/schema.kdl"` + "\nnode1\n",
+			want:      "path/with spaces/schema.kdl",
+			wantFound: true,
 		},
 		{
-			name:    "after blank lines and comments",
-			content: "// a comment\n\n" + `/- kdl-schema "./s.kdl"` + "\nnode1\n",
-			want:    "./s.kdl",
-			wantOk:  true,
+			name:      "after blank lines and comments",
+			content:   "// a comment\n\n" + `/- kdl-schema "./s.kdl"` + "\nnode1\n",
+			want:      "./s.kdl",
+			wantFound: true,
 		},
 		{
-			name:    "directive as trailing comment of document",
-			content: "node1\n" + `/- kdl-schema "./s.kdl"` + "\n",
-			want:    "./s.kdl",
-			wantOk:  true,
+			name:      "directive as trailing comment of document",
+			content:   "node1\n" + `/- kdl-schema "./s.kdl"` + "\n",
+			want:      "./s.kdl",
+			wantFound: true,
 		},
 		{
-			name:    "no directive",
-			content: "node1\nnode2\n",
-			wantOk:  false,
+			name:      "no directive",
+			content:   "node1\nnode2\n",
+			wantFound: false,
 		},
 		{
-			name:    "empty content",
-			content: "",
-			wantOk:  false,
+			name:      "empty content",
+			content:   "",
+			wantFound: false,
 		},
 		{
-			name:    "different comment content",
-			content: `/- kdl-version 2` + "\nnode\n",
-			wantOk:  false,
+			name:      "different comment content",
+			content:   `/- kdl-version 2` + "\nnode\n",
+			wantFound: false,
 		},
 		{
-			name:    "missing arg",
-			content: "/- kdl-schema\nnode\n",
-			wantOk:  false,
+			name:      "missing arg",
+			content:   "/- kdl-schema\nnode\n",
+			wantFound: true,
+			wantErr:   true,
+		},
+		{
+			name:      "wrong arg type",
+			content:   "/- kdl-schema 1\nnode\n",
+			wantFound: true,
+			wantErr:   true,
+		},
+		{
+			name:      "too many args, props, and children",
+			content:   `/- kdl-schema "a" "a" foo=1 { foo; }` + "\nnode\n",
+			wantFound: true,
+			wantErr:   true,
+		},
+		{
+			name:      "property only",
+			content:   `/- kdl-schema "a" foo=1` + "\nnode\n",
+			wantFound: true,
+			wantErr:   true,
+		},
+		{
+			name:      "children only",
+			content:   `/- kdl-schema "a" { foo; }` + "\nnode\n",
+			wantFound: true,
+			wantErr:   true,
 		},
 	}
 
@@ -109,12 +135,27 @@ func TestExtractSchemaDirective(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
-			got, _, _, ok := kdl.ExtractSchemaDirective(doc)
-			if ok != tc.wantOk {
-				t.Fatalf("ok = %v, want %v", ok, tc.wantOk)
+			dir, found := kdl.ExtractSchemaDirective(doc)
+			if found != tc.wantFound {
+				t.Fatalf("found = %v, want %v", found, tc.wantFound)
 			}
-			if ok && got != tc.want {
-				t.Errorf("path = %q, want %q", got, tc.want)
+			if !found {
+				return
+			}
+			if tc.wantErr {
+				if dir.Err == "" {
+					t.Errorf("Err = %q, want non-empty", dir.Err)
+				}
+				if dir.Location != "" {
+					t.Errorf("Path = %q, want empty for malformed directive", dir.Location)
+				}
+				return
+			}
+			if dir.Err != "" {
+				t.Fatalf("Err = %q, want empty", dir.Err)
+			}
+			if dir.Location != tc.want {
+				t.Errorf("path = %q, want %q", dir.Location, tc.want)
 			}
 		})
 	}

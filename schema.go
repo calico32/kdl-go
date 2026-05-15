@@ -148,16 +148,37 @@ func ParseSchemaFromFile(path string) (*Schema, error) {
 	return ParseSchema(f)
 }
 
+// SchemaDirective is the result of scanning a document for a
+// `/- kdl-schema "<location>"` directive via [ExtractSchemaDirective].
+type SchemaDirective struct {
+	// Location is the schema location from a well-formed directive. Empty when
+	// Err is set.
+	Location string
+	// Start and End bound the whole `/- kdl-schema ...` slashdash directive in
+	// the source. They are valid whenever a directive was found, including a
+	// malformed one, so callers can attach a diagnostic to it.
+	Start, End Location
+	// Err describes why a found directive is malformed, or "" if it is valid.
+	Err string
+}
+
 // ExtractSchemaDirective scans the slashdashed nodes attached to a parsed
-// document for a `/- kdl-schema "<path>"` directive. The directive may appear
-// as a leading comment of any top-level node or as a trailing comment of the
-// document. Returns the path, the source range of the slashdash comment, and
-// true if found. Only file-relative paths are supported.
-func ExtractSchemaDirective(doc *Document) (path string, start, end Location, ok bool) {
+// document for a `/- kdl-schema "<location>"` directive. The directive may
+// appear as a leading comment of any top-level node or as a trailing comment of
+// the document.
+//
+// Location may be a file path or a URI; it is up to callers to interpret it and
+// load the referenced schema as needed.
+//
+// The second return value is true if a slashdash node named "kdl-schema" was
+// found, whether or not it is well-formed. A well-formed directive has exactly
+// one string argument and no properties or children; a found directive that
+// violates this has SchemaDirective.Err set (and Path empty).
+func ExtractSchemaDirective(doc *Document) (SchemaDirective, bool) {
 	if doc == nil {
-		return "", Location{}, Location{}, false
+		return SchemaDirective{}, false
 	}
-	scan := func(comments []Comment) (string, Location, Location, bool) {
+	scan := func(comments []Comment) (SchemaDirective, bool) {
 		for _, c := range comments {
 			if c.Kind() != CommentSlashdash {
 				continue
@@ -166,29 +187,41 @@ func ExtractSchemaDirective(doc *Document) (path string, start, end Location, ok
 			if n == nil || n.Name() != "kdl-schema" {
 				continue
 			}
-			args := n.Arguments()
-			if len(args) != 1 || args[0].Kind() != String {
-				continue
-			}
 			// c.Start() covers only the `/-` token; extend the range to the
-			// end of the slashed node so callers see the whole directive
+			// end of the slashed node so callers see the whole directive.
 			end := n.EndLocation()
 			if end.Line == 0 {
 				end = c.End()
 			}
-			return args[0].String(), c.Start(), end, true
+			d := SchemaDirective{Start: c.Start(), End: end}
+			args := n.Arguments()
+			switch {
+			case len(args) == 0:
+				d.Err = "kdl-schema directive requires a single string argument (the schema location)"
+			case len(args) > 1:
+				d.Err = "kdl-schema directive takes exactly one argument"
+			case args[0].Kind() != String:
+				d.Err = "kdl-schema directive argument must be a string"
+			case len(n.Properties()) > 0:
+				d.Err = "kdl-schema directive does not take properties"
+			case n.Children() != nil && len(n.Children().Nodes) > 0:
+				d.Err = "kdl-schema directive does not take a children block"
+			default:
+				d.Location = args[0].String()
+			}
+			return d, true
 		}
-		return "", Location{}, Location{}, false
+		return SchemaDirective{}, false
 	}
 	for _, node := range doc.Nodes {
-		if p, s, e, found := scan(node.LeadingComments()); found {
-			return p, s, e, true
+		if d, found := scan(node.LeadingComments()); found {
+			return d, true
 		}
 	}
-	if p, s, e, found := scan(doc.TrailingComments); found {
-		return p, s, e, true
+	if d, found := scan(doc.TrailingComments); found {
+		return d, true
 	}
-	return "", Location{}, Location{}, false
+	return SchemaDirective{}, false
 }
 
 // ValidateDocument validates doc against schema and returns diagnostics.
