@@ -98,6 +98,15 @@ func TestFormatBareStringStartsWithSign(t *testing.T) {
 	checkFormat(t, `node "-bar"`, "node -bar\n")
 }
 
+func TestFormatReservedNodeNameQuoted(t *testing.T) {
+	checkFormat(t, `"true"`, "\"true\"\n")
+	checkFormat(t, `"false"`, "\"false\"\n")
+	checkFormat(t, `"null"`, "\"null\"\n")
+	checkFormat(t, `"true"`, "\"true\"\n", WithVersion(Version1))
+	checkFormat(t, `"false"`, "\"false\"\n", WithVersion(Version1))
+	checkFormat(t, `"null"`, "\"null\"\n", WithVersion(Version1))
+}
+
 func TestFormatStringStartingWithDigitQuoted(t *testing.T) {
 	doc := &Document{Nodes: []*Node{
 		NewNode("node").AddArgument(NewString("123abc")),
@@ -642,7 +651,6 @@ func TestFormatV1Keywords(t *testing.T) {
 }
 
 func TestFormatV1IdentifierQuoting(t *testing.T) {
-	// v1: identifiers starting with digit must be quoted
 	doc := &Document{Nodes: []*Node{
 		NewNode("node").AddArgument(NewString("123")),
 	}}

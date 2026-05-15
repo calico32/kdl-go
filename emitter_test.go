@@ -145,24 +145,24 @@ func TestEmitStringAlwaysQuote(t *testing.T) {
 	}
 }
 
-func TestEmitBareIdents(t *testing.T) {
+func TestEmitV2BareStrings(t *testing.T) {
 	tests := []struct {
 		name     string
 		val      Value
 		expected string
 	}{
 		{
-			name:     "simple ident",
+			name:     "simple string",
 			val:      NewString("simple"),
 			expected: "simple",
 		},
 		{
-			name:     "ident with spaces",
+			name:     "string with spaces",
 			val:      NewString("with spaces"),
 			expected: `"with spaces"`,
 		},
 		{
-			name:     "ident with special chars",
+			name:     "string with special chars",
 			val:      NewString("special!@#"),
 			expected: `"special!@#"`,
 		},
@@ -182,32 +182,32 @@ func TestEmitBareIdents(t *testing.T) {
 			expected: `"nan"`,
 		},
 		{
-			name:     "ident with leading digit",
+			name:     "string with leading digit",
 			val:      NewString("1abc"),
 			expected: `"1abc"`,
 		},
 		{
-			name:     "ident with leading dot and digit",
+			name:     "string with leading dot and digit",
 			val:      NewString(".1abc"),
 			expected: `".1abc"`,
 		},
 		{
-			name:     "ident with leading sign and digit",
+			name:     "string with leading sign and digit",
 			val:      NewString("-1abc"),
 			expected: `"-1abc"`,
 		},
 		{
-			name:     "ident with leading sign and dot and digit",
+			name:     "string with leading sign and dot and digit",
 			val:      NewString("+.1abc"),
 			expected: `"+.1abc"`,
 		},
 		{
-			name:     "ident with leading dot",
+			name:     "string with leading dot",
 			val:      NewString(".abc"),
 			expected: `.abc`,
 		},
 		{
-			name:     "ident with leading sign",
+			name:     "string with leading sign",
 			val:      NewString("-abc"),
 			expected: `-abc`,
 		},
@@ -232,6 +232,81 @@ func TestEmitBareIdents(t *testing.T) {
 			got := buf.String()
 			if got != "node "+tt.expected+"\n" {
 				t.Errorf("Emit() = %q, want %q", got, "node "+tt.expected+"\n")
+			}
+		})
+	}
+}
+
+func TestEmitBareNodeNames(t *testing.T) {
+	tests := []struct {
+		name     string
+		nodeName string
+		version  Version
+		expected string
+	}{
+		{
+			name:     "simple name",
+			nodeName: "simple",
+			expected: `simple`,
+		},
+		{
+			name:     "name with spaces",
+			nodeName: "with spaces",
+			expected: `"with spaces"`,
+		},
+		{
+			name:     "name with special chars",
+			nodeName: "special!@#",
+			expected: `"special!@#"`,
+		},
+		{
+			name:     "empty name",
+			nodeName: "",
+			expected: `""`,
+		},
+		{
+			name:     "reserved bool",
+			nodeName: "true",
+			expected: `"true"`,
+		},
+		{
+			name:     "reserved float",
+			nodeName: "nan",
+			expected: `"nan"`,
+		},
+		{
+			name:     "v1 bool",
+			nodeName: "true",
+			version:  Version1,
+			expected: `"true"`,
+		},
+		{
+			name:     "v1 null",
+			nodeName: "null",
+			version:  Version1,
+			expected: `"null"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := &Document{
+				Nodes: []*Node{
+					{
+						name:  tt.nodeName,
+						args:  []Value{},
+						props: map[string]Value{},
+					},
+				},
+			}
+			var buf bytes.Buffer
+			err := Emit(doc, &buf, WithVersion(tt.version))
+			if err != nil {
+				t.Fatalf("Emit() error = %v", err)
+			}
+			got := buf.String()
+			if got != tt.expected+"\n" {
+				t.Errorf("Emit() = %q, want %q", got, tt.expected+"\n")
 			}
 		})
 	}

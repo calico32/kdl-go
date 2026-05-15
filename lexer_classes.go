@@ -10,6 +10,10 @@ func CanBeBareIdentifier(s string, version Version) bool {
 		return false
 	}
 	if version == Version1 {
+		switch s {
+		case "true", "false", "null":
+			return false
+		}
 		runes := []rune(s)
 		allowDash := len(runes) == 1 || !isDigit(runes[1])
 		for i, r := range runes {
