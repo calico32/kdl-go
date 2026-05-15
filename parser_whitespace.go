@@ -183,17 +183,18 @@ func (p *parser) collectBetweenNodes(initialNewlines int) (comments []Comment, b
 		case tokenBackslash:
 			p.readEscline()
 		case tokenSingleLineComment:
-			c := Comment{kind: CommentSingleLine, text: p.token.Text}
+			c := Comment{kind: CommentSingleLine, text: p.token.Text, blankLineBefore: newlines >= 2}
 			if p.withLocations {
 				c.start = p.lexer.File().Location(p.token.Pos)
 				c.end = p.lexer.File().Location(p.token.EndPos)
 			}
 			comments = append(comments, c)
 			p.next()
+			newlines = 1 // Single-line comments natively include the trailing newline
 		case tokenMultiLineCommentStart:
 			startPos := p.token.Pos
 			text := p.readMultiLineCommentText()
-			c := Comment{kind: CommentMultiLine, text: text}
+			c := Comment{kind: CommentMultiLine, text: text, blankLineBefore: newlines >= 2}
 			if p.withLocations {
 				c.start = p.lexer.File().Location(startPos)
 				c.end = p.lexer.File().Location(startPos + Pos(len(text)))
@@ -204,6 +205,9 @@ func (p *parser) collectBetweenNodes(initialNewlines int) (comments []Comment, b
 			// (after this consumed one) is the real blank-line signal.
 			if p.token.Type == tokenNewline {
 				p.next()
+				newlines = 1
+			} else {
+				newlines = 0
 			}
 		default:
 			return comments, newlines >= 2

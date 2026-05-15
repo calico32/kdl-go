@@ -280,12 +280,17 @@ func (p *parser) parseNodes() (nodes []*Node, trailing []Comment) {
 			p.skipLineSpace()
 			slashedNode := p.parseNode()
 			if slashedNode != nil {
-				c := Comment{kind: CommentSlashdash, node: slashedNode}
+				c := Comment{
+					kind:            CommentSlashdash,
+					node:            slashedNode,
+					blankLineBefore: pendingBlankLine,
+				}
 				if p.withLocations {
 					c.start = p.lexer.File().Location(slashStart)
 					c.end = p.lexer.File().Location(slashEnd)
 				}
 				pendingComments = append(pendingComments, c)
+				pendingBlankLine = false
 			}
 			// consume terminator
 			switch p.token.Type {

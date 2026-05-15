@@ -228,15 +228,21 @@ func (f *formatter) writeContinuation() {
 
 func (f *formatter) formatDocument(d *Document) {
 	for i, n := range d.Nodes {
-		if i > 0 && f.preserveBlankLines && n.blankLineBefore {
-			f.write("\n")
-		}
-		for _, c := range n.leadingComments {
+		for j, c := range n.leadingComments {
+			if (i > 0 || j > 0) && f.preserveBlankLines && c.blankLineBefore {
+				f.write("\n")
+			}
 			f.writeComment(c)
+		}
+		if (i > 0 || len(n.leadingComments) > 0) && f.preserveBlankLines && n.blankLineBefore {
+			f.write("\n")
 		}
 		f.formatNode(n)
 	}
-	for _, c := range d.TrailingComments {
+	for j, c := range d.TrailingComments {
+		if (len(d.Nodes) > 0 || j > 0) && f.preserveBlankLines && c.blankLineBefore {
+			f.write("\n")
+		}
 		f.writeComment(c)
 	}
 }

@@ -17,11 +17,12 @@ const (
 // A Comment is a KDL single-line (//), multi-line (/* */), or slashdash (/-)
 // comment.
 type Comment struct {
-	kind  CommentKind
-	text  string // raw text for CommentSingleLine / CommentMultiLine
-	node  *Node  // parsed node for CommentSlashdash
-	start Location
-	end   Location
+	kind            CommentKind
+	text            string // raw text for CommentSingleLine / CommentMultiLine
+	node            *Node  // parsed node for CommentSlashdash
+	start           Location
+	end             Location
+	blankLineBefore bool
 }
 
 func (c Comment) Kind() CommentKind { return c.kind }

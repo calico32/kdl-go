@@ -606,6 +606,26 @@ func TestFormatFirstNodeNoBlankLine(t *testing.T) {
 	checkFormat(t, src, "a\nb\n")
 }
 
+func TestFormatBlankLinesBetweenSingleLineComments(t *testing.T) {
+	src := "// a\n\n// b\nnode\n"
+	checkFormat(t, src, "// a\n\n// b\nnode\n")
+}
+
+func TestFormatBlankLinesBetweenMultilineComments(t *testing.T) {
+	src := "/* a */\n\n/* b */\nnode\n"
+	checkFormat(t, src, "/* a */\n\n/* b */\nnode\n")
+}
+
+func TestFormatBlankLinesBeforeSlashdash(t *testing.T) {
+	src := "node1\n\n/- node2\nnode3\n"
+	checkFormat(t, src, "node1\n\n/- node2\nnode3\n")
+}
+
+func TestFormatBlankLinesBetweenSlashdashAndComment(t *testing.T) {
+	src := "/- node1\n\n// comment\nnode2\n"
+	checkFormat(t, src, "/- node1\n\n// comment\nnode2\n")
+}
+
 // version handling
 
 func TestFormatV1Keywords(t *testing.T) {
