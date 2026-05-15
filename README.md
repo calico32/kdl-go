@@ -6,7 +6,8 @@ documents, as well as decoding KDL documents into Go data structures and
 encoding them back into KDL.
 
 This implementation follows the KDL 1.0.0 and 2.0.0 specifications and passes
-the upstream test suite for each (see `kdl_test.go`). Note that the parser
+the upstream test suite for each (see `kdl_test.go`), as well as the v2 parse-only
+[`kdl-test`](https://github.com/kdl-org/kdl-test) suite. Note that the parser
 primarily targets the v2 spec and is somewhat more permissive when parsing v1
 input.
 
@@ -90,6 +91,27 @@ func main() {
 		panic(err)
 	}
 }
+```
+
+## Running Tests
+
+The upstream KDL test suites are included as submodules in `internal/test/kdl{1,2}`. To run them, first initialize the submodules:
+
+```bash
+git submodule update --init
+```
+
+Then, run the tests with:
+
+```bash
+go test -v ./...
+```
+
+To run `kdl-test` (a v2-only parse-only suite), [download and install the test runner from GitHub](https://github.com/kdl-org/kdl-test/releases). Then, from the root of this repository, run:
+
+```bash
+go build -o kdlgo-test ./bin/kdlgo-test
+kdl-test run --decoder ./kdlgo-test
 ```
 
 ## License
