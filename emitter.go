@@ -275,27 +275,7 @@ func (e *emitter) emitNode(n *Node) error {
 }
 
 func (e *emitter) emitIdentifier(s string) error {
-	if e.version != Version1 {
-		return e.emitString(s)
-	}
-
-	needsQuoting := s == "" || e.stringAlwaysQuote
-	if !needsQuoting {
-		runes := []rune(s)
-		allowDash := len(runes) == 1 || !isDigit(runes[1])
-		for i, r := range runes {
-			if i == 0 {
-				if !isV1IdentStartChar(r, allowDash) {
-					needsQuoting = true
-					break
-				}
-			} else if !isV1IdentChar(r) {
-				needsQuoting = true
-				break
-			}
-		}
-	}
-
+	needsQuoting := e.stringAlwaysQuote || !CanBeBareIdentifier(s, e.version)
 	if needsQuoting {
 		return e.emitString(s)
 	} else {
@@ -304,23 +284,9 @@ func (e *emitter) emitIdentifier(s string) error {
 }
 
 func (e *emitter) emitString(s string) error {
-	needsQuoting := s == "" || e.stringAlwaysQuote || e.version == Version1
-	if !needsQuoting {
-		for i, r := range s {
-			if i == 0 {
-				if !isIdentStartChar(r) && !isSign(r) && r != '.' {
-					needsQuoting = true
-					break
-				}
-			} else if !isIdentChar(r) {
-				needsQuoting = true
-				break
-			}
-		}
-	}
-
+	needsQuoting := e.stringAlwaysQuote || e.version == Version1 || !CanBeBareIdentifier(s, e.version)
 	if needsQuoting {
-		return e.emit(`"` + escapeString(e.version, s) + `"`)
+		return e.emit(`"` + EscapeString(s, e.version) + `"`)
 	} else {
 		return e.emit(s)
 	}

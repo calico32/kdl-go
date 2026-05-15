@@ -526,51 +526,16 @@ func (f *formatter) inlineNode(n *Node) string {
 // identToString returns the KDL identifier/string representation of s,
 // quoting it when necessary for the active version.
 func (f *formatter) identToString(s string) string {
-	if f.version != Version1 {
-		return f.stringToKDL(s)
-	}
-	if s == "" {
-		return `"` + escapeString(Version1, s) + `"`
-	}
-	runes := []rune(s)
-	allowDash := len(runes) == 1 || !isDigit(runes[1])
-	needsQuoting := false
-	for i, r := range runes {
-		if i == 0 {
-			if !isV1IdentStartChar(r, allowDash) {
-				needsQuoting = true
-				break
-			}
-		} else if !isV1IdentChar(r) {
-			needsQuoting = true
-			break
-		}
-	}
-	if needsQuoting {
-		return `"` + escapeString(Version1, s) + `"`
+	if !CanBeBareIdentifier(s, f.version) {
+		return `"` + EscapeString(s, f.version) + `"`
 	}
 	return s
 }
 
 // stringToKDL returns the v2 KDL bare or quoted string representation of s.
 func (f *formatter) stringToKDL(s string) string {
-	if s == "" {
-		return `""`
-	}
-	needsQuoting := false
-	for i, r := range s {
-		if i == 0 {
-			if !isIdentStartChar(r) && !isSign(r) && r != '.' {
-				needsQuoting = true
-				break
-			}
-		} else if !isIdentChar(r) {
-			needsQuoting = true
-			break
-		}
-	}
-	if needsQuoting {
-		return `"` + escapeString(f.version, s) + `"`
+	if f.version == Version1 || !CanBeBareIdentifier(s, f.version) {
+		return `"` + EscapeString(s, f.version) + `"`
 	}
 	return s
 }

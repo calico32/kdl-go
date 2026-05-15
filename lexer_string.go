@@ -54,7 +54,7 @@ func (l *lexer) readQuotedString() token {
 				}
 				content.WriteString(ln)
 			}
-			unescaped, err := unescapeString(l.version, content.String())
+			unescaped, err := unescapeString(content.String(), l.version)
 			if err != nil {
 				l.errorf(start, "invalid multi-line string: %s", err)
 			}
@@ -97,7 +97,7 @@ func (l *lexer) readQuotedString() token {
 	// single-line quoted string
 	for !l.readStringChar(false) {
 	}
-	content, err := unescapeString(l.version, l.text(start+1, l.offset-1))
+	content, err := unescapeString(l.text(start+1, l.offset-1), l.version)
 	if err != nil {
 		l.errorf(start, "invalid string: %s", err)
 	}

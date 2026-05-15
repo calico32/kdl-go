@@ -29,7 +29,29 @@ func CanBeBareIdentifier(s string, version Version) bool {
 	}
 	for i, r := range s {
 		if i == 0 {
-			if !isIdentStartChar(r) && !isSign(r) && r != '.' {
+			// The following characters cannot be the first character in an
+			// Identifier String (Section 3.10):
+			//  - Any decimal digit (0-9)
+			//  - Any non-identifier characters (Section 3.10.2)
+			// Additionally, the following initial characters impose limitations
+			// on subsequent characters:
+			//  - the + and - characters can only be used as an initial character
+			//    if the second character is not a digit. If the second character
+			//    is ., then the third character must not be a digit.
+			//  - the . character can only be used as an initial character if the
+			//    second character is not a digit.
+			if isDigit(r) || !isIdentChar(r) {
+				return false
+			}
+			if isSign(r) && len(s) > 1 {
+				if isDigit(rune(s[1])) {
+					return false
+				}
+				if s[1] == '.' && len(s) > 2 && isDigit(rune(s[2])) {
+					return false
+				}
+			}
+			if r == '.' && len(s) > 1 && isDigit(rune(s[1])) {
 				return false
 			}
 		} else if !isIdentChar(r) {

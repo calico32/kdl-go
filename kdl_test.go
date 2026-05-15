@@ -144,13 +144,27 @@ func testSpecificEmitterOptions(caseName string, version kdl.Version) []kdl.Emit
 	return nil
 }
 
-// There's no good way to output the correct document for this case for the reasons
-// mentioned above, so we just check for a specific output. It's equivalent to
-// the expected output, but with the numbers formatted differently.
+// isAcceptableMismatch checks for specific known mismatches between expected
+// and actual output for certain test cases, where the mismatch is due to
+// differences in formatting that are not tracked by the parser. This is a bit
+// of a hack to avoid having to add special emitter options or tracking just for
+// these cases, and should be used sparingly.
 func isAcceptableMismatch(caseName string, version kdl.Version, actual string) bool {
+	// There's no good way to output the correct document for this case for the reasons
+	// mentioned above, so we just check for a specific output. It's equivalent to
+	// the expected output, but with the numbers formatted differently.
 	if caseName == "parse_all_arg_types.kdl" && version == kdl.Version1 {
 		// True expected: `node 1 1.0 1.0E+10 1.0E-10 0x1 0o7 0b10 "arg" "arg\\\\" true false null`
 		return actual == `node 1 1.0 1.0E+10 1.0E-10 1 7 2 "arg" "arg\\\\" true false null`
+	}
+
+	// Escaping of / is allowed in v1 but not required. We avoid escaping it
+	// because it makes the emitted KDL more readable, but that means we have to
+	// allow the mismatch in this test case if we don't want to add a special
+	// emitter option just for this one case.
+	if caseName == "all_escapes.kdl" && version == kdl.Version1 {
+		// True expected: `node "\"\\\/\b\f\n\r\t"`
+		return actual == `node "\"\\/\b\f\n\r\t"`
 	}
 
 	return false

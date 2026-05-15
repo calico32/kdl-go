@@ -144,3 +144,95 @@ func TestEmitStringAlwaysQuote(t *testing.T) {
 		t.Errorf("Emit() = %q, want %q", got, expected)
 	}
 }
+
+func TestEmitBareIdents(t *testing.T) {
+	tests := []struct {
+		name     string
+		val      Value
+		expected string
+	}{
+		{
+			name:     "simple ident",
+			val:      NewString("simple"),
+			expected: "simple",
+		},
+		{
+			name:     "ident with spaces",
+			val:      NewString("with spaces"),
+			expected: `"with spaces"`,
+		},
+		{
+			name:     "ident with special chars",
+			val:      NewString("special!@#"),
+			expected: `"special!@#"`,
+		},
+		{
+			name:     "empty string",
+			val:      NewString(""),
+			expected: `""`,
+		},
+		{
+			name:     "reserved bool",
+			val:      NewString("true"),
+			expected: `"true"`,
+		},
+		{
+			name:     "reserved float",
+			val:      NewString("nan"),
+			expected: `"nan"`,
+		},
+		{
+			name:     "ident with leading digit",
+			val:      NewString("1abc"),
+			expected: `"1abc"`,
+		},
+		{
+			name:     "ident with leading dot and digit",
+			val:      NewString(".1abc"),
+			expected: `".1abc"`,
+		},
+		{
+			name:     "ident with leading sign and digit",
+			val:      NewString("-1abc"),
+			expected: `"-1abc"`,
+		},
+		{
+			name:     "ident with leading sign and dot and digit",
+			val:      NewString("+.1abc"),
+			expected: `"+.1abc"`,
+		},
+		{
+			name:     "ident with leading dot",
+			val:      NewString(".abc"),
+			expected: `.abc`,
+		},
+		{
+			name:     "ident with leading sign",
+			val:      NewString("-abc"),
+			expected: `-abc`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := &Document{
+				Nodes: []*Node{
+					{
+						name:  "node",
+						args:  []Value{tt.val},
+						props: map[string]Value{},
+					},
+				},
+			}
+			var buf bytes.Buffer
+			err := Emit(doc, &buf)
+			if err != nil {
+				t.Fatalf("Emit() error = %v", err)
+			}
+			got := buf.String()
+			if got != "node "+tt.expected+"\n" {
+				t.Errorf("Emit() = %q, want %q", got, "node "+tt.expected+"\n")
+			}
+		})
+	}
+}

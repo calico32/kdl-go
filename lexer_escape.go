@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func unescapeString(v Version, s string) (string, error) {
+func unescapeString(s string, v Version) (string, error) {
 	type unescapeState int
 	const (
 		normal unescapeState = iota
@@ -120,7 +120,9 @@ func unescapeString(v Version, s string) (string, error) {
 	return result.String(), nil
 }
 
-func escapeString(v Version, s string) string {
+// EscapeString returns the escaped form of s, suitable for use in a KDL string
+// literal. The result is not wrapped in quotes.
+func EscapeString(s string, v Version) string {
 	var result strings.Builder
 	for _, ch := range s {
 		switch ch {
@@ -141,10 +143,8 @@ func escapeString(v Version, s string) string {
 		case 0x0020:
 			result.WriteString(` `) // no need to escape space
 		default:
-			if ch == 0x002F && v == Version1 {
-				result.WriteString(`\/`)
-			} else if isDisallowedChar(ch) {
-				result.WriteString(fmt.Sprintf(`\u{%X}`, ch))
+			if isDisallowedChar(ch) {
+				fmt.Fprintf(&result, `\u{%X}`, ch)
 			} else {
 				result.WriteRune(ch)
 			}
