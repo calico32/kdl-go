@@ -45,7 +45,6 @@ const (
 	tokenMultiLineCommentContent
 	tokenMultiLineCommentEnd
 	tokenSlashdash
-	tokenVersion
 
 	numTokens
 )
@@ -84,7 +83,6 @@ var tokenTypeNames = map[tokenType]string{
 	tokenMultiLineCommentContent: "<mcomment_content>",
 	tokenMultiLineCommentEnd:     "<mcomment_end>",
 	tokenSlashdash:               "/-",
-	tokenVersion:                 "<version>",
 }
 
 func init() {
