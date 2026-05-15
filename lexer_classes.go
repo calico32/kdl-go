@@ -1,5 +1,44 @@
 package kdl
 
+// CanBeBareIdentifier reports whether s can be written as an unquoted
+// identifier (or value-as-identifier) under the given KDL spec version.
+// The empty string and reserved keywords (true/false/null/inf/-inf/nan in v2)
+// always require quoting. version must be Version1 or Version2; VersionAuto
+// is treated as Version2.
+func CanBeBareIdentifier(s string, version Version) bool {
+	if s == "" {
+		return false
+	}
+	if version == Version1 {
+		runes := []rune(s)
+		allowDash := len(runes) == 1 || !isDigit(runes[1])
+		for i, r := range runes {
+			if i == 0 {
+				if !isV1IdentStartChar(r, allowDash) {
+					return false
+				}
+			} else if !isV1IdentChar(r) {
+				return false
+			}
+		}
+		return true
+	}
+	switch s {
+	case "true", "false", "null", "inf", "-inf", "nan":
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if !isIdentStartChar(r) && !isSign(r) && r != '.' {
+				return false
+			}
+		} else if !isIdentChar(r) {
+			return false
+		}
+	}
+	return true
+}
+
 // v2 only
 func isIdentStartChar(ch rune) bool {
 	return isIdentChar(ch) && !isDigit(ch) && !isSign(ch) && ch != '.'
