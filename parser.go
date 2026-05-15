@@ -207,6 +207,9 @@ func detectV1(input string) bool {
 	if newline := strings.IndexRune(input, '\n'); newline != -1 {
 		if strings.Contains(input[:newline], "kdl-version 1") {
 			return true
+		} else if strings.Contains(input[:newline], "kdl-version 2") {
+			// explicit v2 declaration overrides any v1 heuristics
+			return false
 		}
 	}
 	if strings.Contains(input, " true") ||
