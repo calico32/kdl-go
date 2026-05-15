@@ -44,6 +44,9 @@ func (d Diagnostic) Error() string {
 type ParseResult struct {
 	Document    *Document
 	Diagnostics []Diagnostic
+	// Version is the KDL spec version the parser settled on. Set even when
+	// the input was originally parsed under VersionAuto.
+	Version Version
 }
 
 // HasErrors returns true if any diagnostic has SeverityError.

@@ -52,7 +52,14 @@ func ParseNamedWithDiagnostics(name string, r io.Reader, opts ...ParseOption) (*
 }
 
 func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption) (*ParseResult, error) {
-	l := newLexer(name, src, nil, VersionAuto)
+	version := VersionAuto
+	for _, opt := range opts {
+		if opt, ok := opt.(versionOption); ok {
+			version = opt.v
+			break
+		}
+	}
+	l := newLexer(name, src, nil, version)
 	p := newParser(l, nil, opts...)
 	doc, diags := p.ParseDocument()
 
@@ -66,7 +73,11 @@ func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption)
 	}
 
 	if !hasErrors(diags) || p.version != VersionAuto {
-		return &ParseResult{Document: doc, Diagnostics: diags}, nil
+		v := p.version
+		if v == VersionAuto {
+			v = Version2
+		}
+		return &ParseResult{Document: doc, Diagnostics: diags, Version: v}, nil
 	}
 
 	// try again as v1
@@ -75,12 +86,12 @@ func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption)
 	p2 := newParser(l2, nil, v1Opts...)
 	doc2, diags2 := p2.ParseDocument()
 	if !hasErrors(diags2) {
-		return &ParseResult{Document: doc2, Diagnostics: diags2}, nil
+		return &ParseResult{Document: doc2, Diagnostics: diags2, Version: Version1}, nil
 	}
 	if detectV1(string(src)) {
-		return &ParseResult{Document: doc2, Diagnostics: diags2}, nil
+		return &ParseResult{Document: doc2, Diagnostics: diags2, Version: Version1}, nil
 	}
-	return &ParseResult{Document: doc, Diagnostics: diags}, nil
+	return &ParseResult{Document: doc, Diagnostics: diags, Version: Version2}, nil
 }
 
 type ParseOption interface {
