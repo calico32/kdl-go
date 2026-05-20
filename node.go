@@ -13,17 +13,32 @@ const (
 	nodeEntryProp
 )
 
+// A propEntry records a single property occurrence in source order. A node
+// with duplicate property keys has one propEntry per occurrence; the props
+// map and propOrder slice still reflect last-wins semantics for callers that
+// don't care about duplicates.
+type propEntry struct {
+	key      string
+	value    Value
+	keyStart Location
+	keyEnd   Location
+}
+
 // A Node represents a KDL node.
 type Node struct {
 	name      string
 	typ       string
 	typeValid bool
 	args      []Value
-	props     map[string]Value // required
-	propOrder []string
+	props     map[string]Value // last-wins lookup
+	propOrder []string         // unique keys in first-occurrence order
+	// propEntries records every property occurrence in source order,
+	// including duplicates. The KDL spec says rightmost wins; props/propOrder
+	// reflect that for lookup, while propEntries preserves the full record.
+	propEntries []propEntry
 	// entries records the source/insertion order of args and props. Each entry
 	// is either nodeEntryArg or nodeEntryProp; the i-th nodeEntryArg refers to
-	// args[i] and the i-th nodeEntryProp refers to propOrder[i].
+	// args[i] and the i-th nodeEntryProp refers to propEntries[i].
 	entries  []nodeEntryKind
 	children Document
 
@@ -86,12 +101,39 @@ func (n *Node) Arguments() []Value { return n.args }
 // Properties returns the properties of the KDL node.
 func (n *Node) Properties() map[string]Value { return n.props }
 
-// PropertyOrder returns the order of properties in the KDL node.
+// PropertyOrder returns the order of properties in the KDL node. Duplicate
+// keys appear once, at the position of their first occurrence.
+// Use [Node.PropertyEntries] to see every occurrence, including duplicates.
 func (n *Node) PropertyOrder() []string { return n.propOrder }
+
+// PropertyEntries returns every property occurrence on this node in source
+// order, including duplicates. For a node with no duplicate property keys,
+// the result has the same length and order as [Node.PropertyOrder].
+func (n *Node) PropertyEntries() []KV {
+	out := make([]KV, len(n.propEntries))
+	for i, e := range n.propEntries {
+		out[i] = KV{Key: e.key, Value: e.value}
+	}
+	return out
+}
+
+// PropertyEntryKeyLocation returns the source range of the key token for the
+// i-th property occurrence. Returns ok=false when the index is out of range
+// or location tracking is off for that entry.
+func (n *Node) PropertyEntryKeyLocation(i int) (start, end Location, ok bool) {
+	if i < 0 || i >= len(n.propEntries) {
+		return
+	}
+	e := n.propEntries[i]
+	if e.keyStart.Line == 0 {
+		return
+	}
+	return e.keyStart, e.keyEnd, true
+}
 
 // entriesConsistent reports whether n.entries matches the current args/props.
 func (n *Node) entriesConsistent() bool {
-	if len(n.entries) != len(n.args)+len(n.propOrder) {
+	if len(n.entries) != len(n.args)+len(n.propEntries) {
 		return false
 	}
 	var a, p int
@@ -103,7 +145,7 @@ func (n *Node) entriesConsistent() bool {
 			p++
 		}
 	}
-	return a == len(n.args) && p == len(n.propOrder)
+	return a == len(n.args) && p == len(n.propEntries)
 }
 
 // removeNthEntry removes the n-th (0-based) occurrence of kind k from entries.
@@ -247,27 +289,55 @@ func (n *Node) RemoveArgument(index int) *Node {
 }
 
 // AddProperty adds a property to the KDL node with the given key and value and
-// returns the node.
+// returns the node. If a property with the same key already exists, the new
+// occurrence is preserved in [Node.PropertyEntries] while [Node.Properties]
+// reflects the last-assigned value.
 func (n *Node) AddProperty(key string, value Value) *Node {
+	n.propEntries = append(n.propEntries, propEntry{key: key, value: value})
+	n.entries = append(n.entries, nodeEntryProp)
 	if !slices.Contains(n.propOrder, key) {
 		n.propOrder = append(n.propOrder, key)
-		n.entries = append(n.entries, nodeEntryProp)
 	}
 	n.props[key] = value
 	return n
 }
 
-// RemoveProperty removes the property with the given key from the KDL node and
-// returns the node. If the property does not exist, RemoveProperty does
+// RemoveProperty removes every occurrence of the given key from the KDL node
+// and returns the node. If the property does not exist, RemoveProperty does
 // nothing.
 func (n *Node) RemoveProperty(key string) *Node {
-	if _, ok := n.props[key]; ok {
-		idx := slices.Index(n.propOrder, key)
-		delete(n.props, key)
-		n.propOrder = slices.DeleteFunc(n.propOrder, func(s string) bool { return s == key })
-		if idx >= 0 {
-			n.removeNthEntry(nodeEntryProp, idx)
+	if _, ok := n.props[key]; !ok {
+		return n
+	}
+	// Walk entries from end to start, removing any nodeEntryProp whose backing
+	// propEntries[i] matches the key. Track which propEntries indices to drop.
+	dropIdx := make(map[int]bool)
+	for i, e := range n.propEntries {
+		if e.key == key {
+			dropIdx[i] = true
 		}
+	}
+	// Remove matching nodeEntryProp slots from entries.
+	pIdx := 0
+	newEntries := n.entries[:0:len(n.entries)]
+	for _, kind := range n.entries {
+		if kind == nodeEntryProp {
+			if dropIdx[pIdx] {
+				pIdx++
+				continue
+			}
+			pIdx++
+		}
+		newEntries = append(newEntries, kind)
+	}
+	n.entries = newEntries
+	// Remove matching propEntries.
+	n.propEntries = slices.DeleteFunc(n.propEntries, func(e propEntry) bool { return e.key == key })
+	delete(n.props, key)
+	n.propOrder = slices.DeleteFunc(n.propOrder, func(s string) bool { return s == key })
+	if n.propKeyStart != nil {
+		delete(n.propKeyStart, key)
+		delete(n.propKeyEnd, key)
 	}
 	return n
 }
@@ -369,6 +439,7 @@ func (n *Node) Clone() *Node {
 		typeValid:       n.typeValid,
 		args:            make([]Value, len(n.args)),
 		propOrder:       make([]string, len(n.propOrder)),
+		propEntries:     make([]propEntry, len(n.propEntries)),
 		entries:         make([]nodeEntryKind, len(n.entries)),
 		props:           make(map[string]Value, len(n.props)),
 		children:        Document{Nodes: make([]*Node, 0, len(n.children.Nodes))},
@@ -413,6 +484,7 @@ func (n *Node) Clone() *Node {
 	}
 	copy(clone.args, n.args)
 	copy(clone.propOrder, n.propOrder)
+	copy(clone.propEntries, n.propEntries)
 	copy(clone.entries, n.entries)
 	maps.Copy(clone.props, n.props)
 	if n.propKeyStart != nil {

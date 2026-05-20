@@ -51,8 +51,19 @@ func Set[K keyType](node *Node, key K, value Value) {
 
 	switch key := any(key).(type) {
 	case string:
-		if !slices.Contains(node.propOrder, key) {
+		if slices.Contains(node.propOrder, key) {
+			// update the last existing occurrence (last-wins) without
+			// creating a new propEntry; preserves any earlier duplicate
+			// occurrences from the source.
+			for i := len(node.propEntries) - 1; i >= 0; i-- {
+				if node.propEntries[i].key == key {
+					node.propEntries[i].value = value
+					break
+				}
+			}
+		} else {
 			node.propOrder = append(node.propOrder, key)
+			node.propEntries = append(node.propEntries, propEntry{key: key, value: value})
 			node.entries = append(node.entries, nodeEntryProp)
 		}
 		node.props[key] = value

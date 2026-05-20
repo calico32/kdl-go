@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
 	"strings"
 )
 
@@ -116,6 +117,32 @@ func WithLocations(v bool) ParseOption {
 	})
 }
 
+// DupMode controls how the parser reacts to repeated property keys on a node.
+type DupMode uint8
+
+const (
+	// DupAllow silently accepts duplicate properties, applying the KDL spec's
+	// last-wins semantics. Earlier occurrences remain accessible via
+	// [Node.PropertyEntries]. This is the default.
+	DupAllow DupMode = iota
+	// DupWarn emits a Warning diagnostic for each repeated occurrence after
+	// the first. Parsing still succeeds.
+	DupWarn
+	// DupError emits an Error diagnostic for each repeated occurrence after
+	// the first. The duplicate is still recorded on the node so the AST is
+	// complete.
+	DupError
+)
+
+// WithDuplicateProperties controls how the parser reacts when a node has the
+// same property key more than once. The KDL spec says the rightmost value
+// wins; this option lets callers surface duplicates as warnings or errors.
+func WithDuplicateProperties(mode DupMode) ParseOption {
+	return parseOptionFunc(func(p *parser) {
+		p.duplicateProps = mode
+	})
+}
+
 func newParser(lex *lexer, trace io.Writer, options ...ParseOption) *parser {
 	p := &parser{
 		lexer:         lex,
@@ -150,6 +177,7 @@ type parser struct {
 	trace          io.Writer
 	withLocations  bool
 	version        Version
+	duplicateProps DupMode
 }
 
 func (p *parser) errorf(pos Pos, format string, args ...any) {
@@ -581,16 +609,34 @@ func (p *parser) parseNode() (n *Node) {
 				}
 				lastEndPos = val.endLocation.Offset
 				if !slashdash {
+					isDup := slices.Contains(n.propOrder, s)
 					n.AddProperty(s, val)
 					if p.withLocations {
-						n.setPropertyKeyLocation(s,
-							p.lexer.File().Location(keyStart),
-							p.lexer.File().Location(keyEnd))
+						keyStartLoc := p.lexer.File().Location(keyStart)
+						keyEndLoc := p.lexer.File().Location(keyEnd)
+						n.setPropertyKeyLocation(s, keyStartLoc, keyEndLoc)
+						// write the per-entry location for the just-appended occurrence
+						last := len(n.propEntries) - 1
+						n.propEntries[last].keyStart = keyStartLoc
+						n.propEntries[last].keyEnd = keyEndLoc
+					}
+					if isDup {
+						switch p.duplicateProps {
+						case DupWarn:
+							p.diagnostics = append(p.diagnostics, Diagnostic{
+								Start:    p.lexer.File().Location(keyStart),
+								End:      p.lexer.File().Location(keyEnd),
+								Severity: SeverityWarning,
+								Message:  fmt.Sprintf("duplicate property %q shadows earlier occurrence", s),
+							})
+						case DupError:
+							p.errorfRange(keyStart, keyEnd, "duplicate property %q", s)
+						}
 					}
 				} else {
 					sd := InlineSlashdash{
 						kind:           InlineSlashdashProp,
-						afterPropCount: len(n.propOrder),
+						afterPropCount: len(n.propEntries),
 						propKey:        s,
 						propVal:        val,
 					}

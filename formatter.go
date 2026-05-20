@@ -148,10 +148,11 @@ type formatter struct {
 
 // bodyPlan returns the sequence of nodeEntryKind slots describing how to
 // interleave n's arguments and properties for the active argPropOrder. The
-// returned slice has len == len(n.args) + len(n.PropertyOrder()).
+// returned slice has len == len(n.args) + len(n.propEntries) — one prop slot
+// per occurrence, including duplicates.
 func (f *formatter) bodyPlan(n *Node) []nodeEntryKind {
 	nArgs := len(n.Arguments())
-	nProps := len(n.PropertyOrder())
+	nProps := len(n.propEntries)
 	switch f.argPropOrder {
 	case ArgPropOrderPreserve:
 		if n.entriesConsistent() {
@@ -289,10 +290,17 @@ func (f *formatter) formatNodeBody(n *Node, prefix string) {
 		}
 	}
 
-	props := n.PropertyOrder()
+	entries := n.propEntries
 	if f.sortProperties {
-		props = slices.Clone(props)
-		slices.Sort(props)
+		entries = slices.Clone(entries)
+		slices.SortStableFunc(entries, func(a, b propEntry) int {
+			if a.key < b.key {
+				return -1
+			} else if a.key > b.key {
+				return 1
+			}
+			return 0
+		})
 	}
 	writeSlashedPropsAt := func(idx int) {
 		for _, prop := range slashedPropAt[idx] {
@@ -321,9 +329,8 @@ func (f *formatter) formatNodeBody(n *Node, prefix string) {
 			argIndex++
 		case nodeEntryProp:
 			writeSlashedPropsAt(propIndex)
-			k := props[propIndex]
-			v := n.Properties()[k]
-			propStr := " " + f.identToString(k) + "=" + f.valueToString(v)
+			e := entries[propIndex]
+			propStr := " " + f.identToString(e.key) + "=" + f.valueToString(e.value)
 			if f.lineLen+len(propStr) > f.maxLineLen {
 				f.writeContinuation()
 				propStr = propStr[1:]
@@ -333,7 +340,7 @@ func (f *formatter) formatNodeBody(n *Node, prefix string) {
 		}
 	}
 	writeSlashedArgsAt(len(n.Arguments()))
-	writeSlashedPropsAt(len(props))
+	writeSlashedPropsAt(len(entries))
 
 	// emit slashed children blocks before the real children block
 	for _, sd := range slashedChildren {
@@ -478,10 +485,17 @@ func (f *formatter) inlineNode(n *Node) string {
 	}
 
 	argPrefix := f.slashdashArgPrefix()
-	props := n.PropertyOrder()
+	entries := n.propEntries
 	if f.sortProperties {
-		props = slices.Clone(props)
-		slices.Sort(props)
+		entries = slices.Clone(entries)
+		slices.SortStableFunc(entries, func(a, b propEntry) int {
+			if a.key < b.key {
+				return -1
+			} else if a.key > b.key {
+				return 1
+			}
+			return 0
+		})
 	}
 
 	plan := f.bodyPlan(n)
@@ -505,11 +519,11 @@ func (f *formatter) inlineNode(n *Node) string {
 				b.WriteString("=")
 				b.WriteString(f.valueToString(sp.Value))
 			}
-			k := props[propIdx]
+			e := entries[propIdx]
 			b.WriteString(" ")
-			b.WriteString(f.identToString(k))
+			b.WriteString(f.identToString(e.key))
 			b.WriteString("=")
-			b.WriteString(f.valueToString(n.Properties()[k]))
+			b.WriteString(f.valueToString(e.value))
 			propIdx++
 		}
 	}
@@ -518,7 +532,7 @@ func (f *formatter) inlineNode(n *Node) string {
 		b.WriteString(argPrefix)
 		b.WriteString(f.valueToString(sv))
 	}
-	for _, sp := range slashedPropAt[len(props)] {
+	for _, sp := range slashedPropAt[len(entries)] {
 		b.WriteString(" ")
 		b.WriteString(argPrefix)
 		b.WriteString(f.identToString(sp.Key))
