@@ -5,8 +5,6 @@ import (
 	"math"
 	"math/big"
 	"slices"
-
-	"github.com/pkg/errors"
 )
 
 type keyType interface{ ~string | ~int }
@@ -97,7 +95,7 @@ func GetKV(document *Document, name string) (*Value, error) {
 	for _, child := range document.Nodes {
 		if child.name == name {
 			if len(child.args) != 1 {
-				return nil, errors.Errorf("child %s does not have exactly one argument", name)
+				return nil, fmt.Errorf("child %s does not have exactly one argument", name)
 			}
 			return &child.args[0], nil
 		}
@@ -180,6 +178,6 @@ func TryNewValue[T intoValue](v T) (Value, error) {
 		}
 		return *v, nil
 	default:
-		return Value{}, errors.Errorf("kdl.NewValue(): unsupported type %T", v)
+		return Value{}, fmt.Errorf("kdl.NewValue(): unsupported type %T", v)
 	}
 }

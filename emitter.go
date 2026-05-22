@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // Emit writes the KDL representation of the given Document to the provided
@@ -386,7 +384,7 @@ func (e *emitter) emitValue(v Value) error {
 			return e.emit("#null")
 		}
 	default:
-		return errors.Errorf("unknown value type: %T", v)
+		return fmt.Errorf("unknown value type: %T", v)
 	}
 }
 
@@ -417,7 +415,7 @@ func (e *emitter) emitFloat(f *big.Float) error {
 	s := f.Text('e', -1)
 	parts := strings.Split(s, "e")
 	if len(parts) != 2 {
-		return errors.Errorf("failed to format float: %s", s)
+		return fmt.Errorf("failed to format float: %s", s)
 	}
 
 	exponent, err := strconv.Atoi(parts[1])

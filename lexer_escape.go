@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 func unescapeString(s string, v Version) (string, error) {
@@ -24,7 +22,7 @@ func unescapeString(s string, v Version) (string, error) {
 	for i, ch := range s {
 		if state == unicode {
 			if ch != '{' {
-				return "", errors.Errorf("invalid unicode escape sequence: missing '{'")
+				return "", fmt.Errorf("invalid unicode escape sequence: missing '{'")
 			}
 			state = unicodeHex
 			unicodeStart = i + 1
@@ -35,20 +33,20 @@ func unescapeString(s string, v Version) (string, error) {
 				u := s[unicodeStart:i]
 				r, err := strconv.ParseInt(u, 16, 32)
 				if err != nil {
-					return "", errors.Wrapf(err, "invalid unicode escape sequence")
+					return "", fmt.Errorf("invalid unicode escape sequence: %w", err)
 				}
 				if r >= 0xD800 && r <= 0xDFFF {
-					return "", errors.Errorf("invalid unicode escape sequence: surrogate code point U+%04X", r)
+					return "", fmt.Errorf("invalid unicode escape sequence: surrogate code point U+%04X", r)
 				}
 				if r > 0x10FFFF {
-					return "", errors.Errorf("invalid unicode escape sequence: code point U+%X out of range", r)
+					return "", fmt.Errorf("invalid unicode escape sequence: code point U+%X out of range", r)
 				}
 				result.WriteRune(rune(r))
 				state = normal
 				continue
 			}
 			if !isHexDigit(ch) {
-				return "", errors.Errorf("invalid unicode escape sequence: invalid character '%c' in unicode escape", ch)
+				return "", fmt.Errorf("invalid unicode escape sequence: invalid character '%c' in unicode escape", ch)
 			}
 			continue
 		}
@@ -96,7 +94,7 @@ func unescapeString(s string, v Version) (string, error) {
 					state = whitespace
 					continue
 				}
-				return "", errors.Errorf("invalid escape sequence: \\%c", ch)
+				return "", fmt.Errorf("invalid escape sequence: \\%c", ch)
 			}
 
 			state = normal
@@ -112,10 +110,10 @@ func unescapeString(s string, v Version) (string, error) {
 	}
 
 	if state == escape {
-		return "", errors.Errorf("invalid escape sequence: trailing backslash")
+		return "", fmt.Errorf("invalid escape sequence: trailing backslash")
 	}
 	if state == unicodeHex {
-		return "", errors.Errorf("invalid unicode escape sequence: missing '}'")
+		return "", fmt.Errorf("invalid unicode escape sequence: missing '}'")
 	}
 	return result.String(), nil
 }

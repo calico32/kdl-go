@@ -1,13 +1,12 @@
 package kdl
 
 import (
+	"fmt"
 	"math"
 	"math/big"
 	"reflect"
 	"strconv"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // unmarshalValue unmarshals a KDL value into a single Go value. See [Unmarshal]
@@ -67,7 +66,7 @@ func (d *decoder) unmarshalString(v Value, tag structTag, target reflect.Value) 
 			target.SetString(v.String())
 			return nil
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into string", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into string", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case String:
@@ -85,7 +84,7 @@ func (d *decoder) unmarshalString(v Value, tag structTag, target reflect.Value) 
 	case Null:
 		target.SetString("")
 	default:
-		return errors.Errorf("cannot unmarshal %T into string", v)
+		return fmt.Errorf("cannot unmarshal %T into string", v)
 	}
 	return nil
 }
@@ -99,11 +98,11 @@ func (d *decoder) unmarshalInt(v Value, tag structTag, target reflect.Value) err
 			return d.setInt(target, int64(v.Int()))
 		case BigInt:
 			if !v.BigInt().IsInt64() {
-				return errors.Errorf("bigint value %s overflows int64", v.BigInt().String())
+				return fmt.Errorf("bigint value %s overflows int64", v.BigInt().String())
 			}
 			return d.setInt(target, v.BigInt().Int64())
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into int", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into int", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case Int:
@@ -111,6 +110,9 @@ func (d *decoder) unmarshalInt(v Value, tag structTag, target reflect.Value) err
 	case Float:
 		return d.setInt(target, int64(v.Float()))
 	case BigInt:
+		if !v.BigInt().IsInt64() {
+			return fmt.Errorf("bigint value %s overflows int64", v.BigInt().String())
+		}
 		return d.setInt(target, v.BigInt().Int64())
 	case BigFloat:
 		i, _ := v.BigFloat().Int64()
@@ -125,13 +127,13 @@ func (d *decoder) unmarshalInt(v Value, tag structTag, target reflect.Value) err
 		// try to parse the string as an int
 		i, err := strconv.ParseInt(v.String(), 0, 64)
 		if err != nil {
-			return errors.Wrapf(err, "cannot unmarshal %q into integer", v.String())
+			return fmt.Errorf("cannot unmarshal %q into integer: %w", v.String(), err)
 		}
 		return d.setInt(target, i)
 	case Null:
 		return d.setInt(target, 0)
 	default:
-		return errors.Errorf("cannot unmarshal %T into int", v)
+		return fmt.Errorf("cannot unmarshal %T into int", v)
 	}
 }
 
@@ -140,7 +142,7 @@ func (d *decoder) setInt(target reflect.Value, value int64) error {
 		panic("setInt called on non-int target")
 	}
 	if target.OverflowInt(value) {
-		return errors.Errorf("integer value %d overflows target type %s", value, target.Type().String())
+		return fmt.Errorf("integer value %d overflows target type %s", value, target.Type().String())
 	}
 	target.SetInt(value)
 	return nil
@@ -153,41 +155,47 @@ func (d *decoder) unmarshalUint(v Value, tag structTag, target reflect.Value) er
 		switch v.Kind() {
 		case Int:
 			if v.Int() < 0 {
-				return errors.Errorf("cannot unmarshal negative integer %d into uint", v.Int())
+				return fmt.Errorf("cannot unmarshal negative integer %d into uint", v.Int())
 			}
 			return d.setUint(target, uint64(v.Int()))
 		case BigInt:
 			if v.BigInt().Sign() < 0 {
-				return errors.Errorf("cannot unmarshal negative bigint %s into uint", v.BigInt().String())
+				return fmt.Errorf("cannot unmarshal negative bigint %s into uint", v.BigInt().String())
 			}
-			return d.setUint(target, uint64(v.BigInt().Int64()))
+			if !v.BigInt().IsUint64() {
+				return fmt.Errorf("bigint value %s overflows uint64", v.BigInt().String())
+			}
+			return d.setUint(target, v.BigInt().Uint64())
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into uint", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into uint", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case Int:
 		i := v.Int()
 		if i < 0 {
-			return errors.Errorf("cannot unmarshal negative integer %d into uint", i)
+			return fmt.Errorf("cannot unmarshal negative integer %d into uint", i)
 		}
 		return d.setUint(target, uint64(i))
 	case Float:
 		f := v.Float()
 		if f < 0 {
-			return errors.Errorf("cannot unmarshal negative float %f into uint", f)
+			return fmt.Errorf("cannot unmarshal negative float %f into uint", f)
 		}
 		return d.setUint(target, uint64(f))
 	case BigInt:
 		bi := v.BigInt()
 		if bi.Sign() < 0 {
-			return errors.Errorf("cannot unmarshal negative bigint %s into uint", bi.String())
+			return fmt.Errorf("cannot unmarshal negative bigint %s into uint", bi.String())
 		}
-		return d.setUint(target, uint64(bi.Int64()))
+		if !bi.IsUint64() {
+			return fmt.Errorf("bigint value %s overflows uint64", bi.String())
+		}
+		return d.setUint(target, bi.Uint64())
 	case BigFloat:
 		bf := v.BigFloat()
 		i, _ := bf.Int64()
 		if i < 0 {
-			return errors.Errorf("cannot unmarshal negative bigfloat %s into uint", bf.String())
+			return fmt.Errorf("cannot unmarshal negative bigfloat %s into uint", bf.String())
 		}
 		return d.setUint(target, uint64(i))
 	case Bool:
@@ -199,13 +207,13 @@ func (d *decoder) unmarshalUint(v Value, tag structTag, target reflect.Value) er
 	case String:
 		u, err := strconv.ParseUint(v.String(), 0, 64)
 		if err != nil {
-			return errors.Wrapf(err, "cannot unmarshal %q into unsigned integer", v.String())
+			return fmt.Errorf("cannot unmarshal %q into unsigned integer: %w", v.String(), err)
 		}
 		return d.setUint(target, u)
 	case Null:
 		return d.setUint(target, 0)
 	default:
-		return errors.Errorf("cannot unmarshal %T into int", v)
+		return fmt.Errorf("cannot unmarshal %T into uint", v)
 	}
 }
 
@@ -214,7 +222,7 @@ func (d *decoder) setUint(target reflect.Value, value uint64) error {
 		panic("setUint called on non-uint target")
 	}
 	if target.OverflowUint(value) {
-		return errors.Errorf("unsigned integer value %d overflows target type %s", value, target.Type().String())
+		return fmt.Errorf("unsigned integer value %d overflows target type %s", value, target.Type().String())
 	}
 	target.SetUint(value)
 	return nil
@@ -233,7 +241,7 @@ func (d *decoder) unmarshalFloat(v Value, tag structTag, target reflect.Value) e
 			target.SetFloat(f64)
 			return nil
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into float", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into float", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case Int:
@@ -256,13 +264,13 @@ func (d *decoder) unmarshalFloat(v Value, tag structTag, target reflect.Value) e
 		// try to parse the string as a float
 		f, err := strconv.ParseFloat(v.String(), 64)
 		if err != nil {
-			return errors.Wrapf(err, "cannot unmarshal %q into float", v.String())
+			return fmt.Errorf("cannot unmarshal %q into float: %w", v.String(), err)
 		}
 		target.SetFloat(f)
 	case Null:
 		target.SetFloat(0)
 	default:
-		return errors.Errorf("cannot unmarshal %T into float", v)
+		return fmt.Errorf("cannot unmarshal %T into float", v)
 	}
 	return nil
 }
@@ -275,7 +283,7 @@ func (d *decoder) unmarshalBool(v Value, tag structTag, target reflect.Value) er
 			target.SetBool(v.Bool())
 			return nil
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into bool", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into bool", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case Bool:
@@ -296,12 +304,12 @@ func (d *decoder) unmarshalBool(v Value, tag structTag, target reflect.Value) er
 		case "0", "f", "F", "false", "FALSE", "False", "n", "N", "no", "NO", "No":
 			target.SetBool(false)
 		default:
-			return errors.Errorf("cannot unmarshal %q into bool", v.String())
+			return fmt.Errorf("cannot unmarshal %q into bool", v.String())
 		}
 	case Null:
 		target.SetBool(false)
 	default:
-		return errors.Errorf("cannot unmarshal %T into bool", v)
+		return fmt.Errorf("cannot unmarshal %T into bool", v)
 	}
 	return nil
 }
@@ -320,7 +328,7 @@ func (d *decoder) unmarshalBigInt(v Value, tag structTag, target reflect.Value) 
 			bi.Set(v.BigInt())
 			return nil
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into big.Int", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into big.Int", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case Int:
@@ -341,13 +349,13 @@ func (d *decoder) unmarshalBigInt(v Value, tag structTag, target reflect.Value) 
 	case String:
 		i, ok := new(big.Int).SetString(v.String(), 10)
 		if !ok {
-			return errors.Errorf("cannot unmarshal %q into big.Int", v.String())
+			return fmt.Errorf("cannot unmarshal %q into big.Int", v.String())
 		}
 		bi.Set(i)
 	case Null:
 		bi.SetInt64(0)
 	default:
-		return errors.Errorf("cannot unmarshal %T into big.Int", v)
+		return fmt.Errorf("cannot unmarshal %T into big.Int", v)
 	}
 
 	return nil
@@ -367,7 +375,7 @@ func (d *decoder) unmarshalBigFloat(v Value, tag structTag, target reflect.Value
 			bf.Set(v.BigFloat())
 			return nil
 		}
-		return errors.Wrapf(ErrStrict, "cannot unmarshal %T into big.Float", v)
+		return fmt.Errorf("%w: cannot unmarshal %T into big.Float", ErrStrict, v)
 	}
 	switch v.Kind() {
 	case Int:
@@ -387,13 +395,13 @@ func (d *decoder) unmarshalBigFloat(v Value, tag structTag, target reflect.Value
 	case String:
 		f, ok := new(big.Float).SetString(v.String())
 		if !ok {
-			return errors.Errorf("cannot unmarshal %q into big.Float", v.String())
+			return fmt.Errorf("cannot unmarshal %q into big.Float", v.String())
 		}
 		bf.Set(f)
 	case Null:
 		bf.SetFloat64(0)
 	default:
-		return errors.Errorf("cannot unmarshal %T into big.Float", v)
+		return fmt.Errorf("cannot unmarshal %T into big.Float", v)
 	}
 	return nil
 }
@@ -409,9 +417,10 @@ func (d *decoder) unmarshalTime(v Value, tag structTag, target reflect.Value) er
 		format = time.RFC3339
 	}
 
+	origFormat := format
 	base, format := decodeFormat(format)
 	if format == "" {
-		return errors.Errorf("unknown time format %q", format)
+		return fmt.Errorf("unknown time format %q", origFormat)
 	}
 
 	var t time.Time
@@ -430,11 +439,11 @@ func (d *decoder) unmarshalTime(v Value, tag structTag, target reflect.Value) er
 	case Null:
 		// zero time
 	default:
-		return errors.Errorf("cannot unmarshal %T into time.Time", v)
+		return fmt.Errorf("cannot unmarshal %T into time.Time", v)
 	}
 
 	if err != nil {
-		return errors.Wrapf(err, "cannot unmarshal %q into time.Time", v)
+		return fmt.Errorf("cannot unmarshal %q into time.Time: %w", v, err)
 	}
 
 	target.Set(reflect.ValueOf(t))
@@ -459,7 +468,7 @@ func (d *decoder) unmarshalDuration(v Value, tag structTag, target reflect.Value
 	case "nano":
 		base = 1e0
 	default:
-		return errors.Errorf("unknown duration format %q", tag.format)
+		return fmt.Errorf("unknown duration format %q", tag.format)
 	}
 
 	var td time.Duration
@@ -478,11 +487,11 @@ func (d *decoder) unmarshalDuration(v Value, tag structTag, target reflect.Value
 	case Null:
 		// zero duration
 	default:
-		return errors.Errorf("cannot unmarshal %T into time.Duration", v)
+		return fmt.Errorf("cannot unmarshal %T into time.Duration", v)
 	}
 
 	if err != nil {
-		return errors.Wrapf(err, "cannot unmarshal %q into time.Duration", v)
+		return fmt.Errorf("cannot unmarshal %q into time.Duration: %w", v, err)
 	}
 
 	target.Set(reflect.ValueOf(td))
@@ -504,7 +513,7 @@ func (d *decoder) unmarshalValueIntoInterface(v Value, target reflect.Value) err
 	if val.Type().ConvertibleTo(target.Type()) {
 		target.Set(val.Convert(target.Type()))
 	} else {
-		return errors.Errorf("cannot unmarshal %T into %s", v, target.Type().String())
+		return fmt.Errorf("cannot unmarshal %T into %s", v, target.Type().String())
 	}
 	return nil
 }

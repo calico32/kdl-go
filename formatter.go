@@ -8,8 +8,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // Format writes a formatted KDL representation of d to w. Default style:
@@ -622,7 +620,7 @@ func (f *formatter) valueToString(v Value) string {
 			b.WriteString("#null")
 		}
 	default:
-		panic(errors.Errorf("formatter.valueToString: unknown value kind %v", v.Kind()))
+		panic(fmt.Errorf("formatter.valueToString: unknown value kind %v", v.Kind()))
 	}
 	return b.String()
 }

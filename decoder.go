@@ -1,12 +1,12 @@
 package kdl
 
 import (
+	"errors"
+	"fmt"
 	"math/big"
 	"reflect"
 
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // a decoder is a KDL decoder.
@@ -32,7 +32,7 @@ func unmarshalDocument(doc *Document, v any, strict bool) error {
 	case reflect.Struct:
 		return d.unmarshalNodesIntoStructFields(doc.Nodes, target)
 	default:
-		return errors.Errorf("argument must be a pointer to struct, interface, or map (unmarshaling document, got %s)", target.Kind())
+		return fmt.Errorf("argument must be a pointer to struct, interface, or map (unmarshaling document, got %s)", target.Kind())
 	}
 }
 
@@ -69,7 +69,7 @@ func unwrapPointerOrInterface(v any) (reflect.Value, error) {
 		} else {
 			target = target.Elem()
 			if target.Kind() != reflect.Pointer {
-				return reflect.Value{}, errors.Errorf("interface must contain a pointer to struct, interface, or map")
+				return reflect.Value{}, fmt.Errorf("interface must contain a pointer to struct, interface, or map")
 			}
 			target = target.Elem()
 		}
@@ -100,7 +100,7 @@ func (d *decoder) unmarshalNodesIntoMap(nodes []*Node, target reflect.Value) err
 			return err
 		}
 		if target.MapIndex(key).IsValid() {
-			return errors.Errorf("duplicate node %q unmarshaling into map", node.name)
+			return fmt.Errorf("duplicate node %q unmarshaling into map", node.name)
 		}
 		target.SetMapIndex(key, value)
 	}
@@ -139,7 +139,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 
 	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[ValueUnmarshaler]()) {
 		if len(node.args) != 1 {
-			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
 		u := reflect.New(target.Type())
 		err := u.Interface().(ValueUnmarshaler).UnmarshalKDLValue(node.args[0])
@@ -153,7 +153,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 	// special handling for time.Time and time.Duration
 	if target.Type() == timeType || target.Type() == durationType {
 		if len(node.args) != 1 {
-			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
 		return d.unmarshalTime(node.args[0], tag, target)
 	}
@@ -168,10 +168,10 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 		} else if len(node.args) == 1 {
 			value = node.args[0]
 		} else {
-			return errors.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Kind())
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Kind())
 		}
 		if (d.strict || tag.flags&strict != 0) && (len(node.props) > 0 || len(node.children.Nodes) > 0) {
-			return errors.Wrapf(ErrStrict, "unused properties/children for node %q (unmarshaling into %s)", node.name, target.Kind())
+			return fmt.Errorf("%w: unused properties/children for node %q (unmarshaling into %s)", ErrStrict, node.name, target.Kind())
 		}
 		return d.unmarshalValue(value, tag, target)
 
@@ -207,7 +207,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 			panic("unimplemented: multiple flag on array type")
 		}
 		if len(node.args) != target.Len() {
-			return errors.Errorf("expected exactly %d arguments", target.Len())
+			return fmt.Errorf("expected exactly %d arguments", target.Len())
 		}
 		for i, arg := range node.args {
 			if err := d.unmarshalValue(arg, tag, target.Index(i)); err != nil {
@@ -219,13 +219,13 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 	case reflect.Interface:
 		if len(node.props) == 0 && len(node.children.Nodes) == 0 {
 			if len(node.args) != 1 {
-				return errors.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.name)
+				return fmt.Errorf("expected exactly one argument (unmarshaling node %q into interface)", node.name)
 			}
 			return d.unmarshalValueIntoInterface(node.args[0], target)
 		}
 
 		if target.NumMethod() != 0 {
-			return errors.Errorf("cannot unmarshal node %q into non-empty interface", node.name)
+			return fmt.Errorf("cannot unmarshal node %q into non-empty interface", node.name)
 		}
 
 		m := reflect.ValueOf(map[string]any{})
@@ -235,7 +235,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 	case reflect.Map:
 		return d.unmarshalNodeIntoMap(node, tag, target)
 	default:
-		return errors.Errorf("cannot unmarshal node %q into %s", node.name, target.Type())
+		return fmt.Errorf("cannot unmarshal node %q into %s", node.name, target.Type())
 	}
 }
 

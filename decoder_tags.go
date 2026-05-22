@@ -1,11 +1,11 @@
 package kdl
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // tagFlags represents flags parsed from a struct field's KDL tag.
@@ -109,7 +109,7 @@ func parseStructTag(str string) (t structTag, err error) {
 	for _, part := range parts[1:] {
 		if flag := lookupFlag(part); flag != 0 {
 			if t.flags&flag != 0 {
-				err = errors.Errorf("duplicate tag flag %q", part)
+				err = fmt.Errorf("duplicate tag flag %q", part)
 				return
 			}
 			t.flags |= flag
@@ -120,7 +120,7 @@ func parseStructTag(str string) (t structTag, err error) {
 			continue
 		}
 
-		err = errors.Errorf("unknown tag flag %q", part)
+		err = fmt.Errorf("unknown tag flag %q", part)
 		return
 	}
 
@@ -143,7 +143,7 @@ func parseStructTag(str string) (t structTag, err error) {
 				hasOtherFlag := otherFlag != thisFlag && t.flags&otherFlag != 0
 				isAllowed := slices.Contains(allowed, otherFlag)
 				if hasOtherFlag && !isAllowed {
-					err = errors.Errorf("%q flag cannot be combined with %q flag", thisFlag, otherFlag)
+					err = fmt.Errorf("%q flag cannot be combined with %q flag", thisFlag, otherFlag)
 					return
 				}
 			}
@@ -195,7 +195,7 @@ func newStructContext(typ reflect.Type) (*structContext, error) {
 
 		if !field.IsExported() {
 			if hasKdlTag {
-				return nil, errors.Errorf("unexported field %q has kdl tag", field.Name)
+				return nil, fmt.Errorf("unexported field %q has kdl tag", field.Name)
 			}
 
 			// otherwise, ignore unexported field
@@ -205,7 +205,7 @@ func newStructContext(typ reflect.Type) (*structContext, error) {
 
 		tag, err := parseStructTag(tagStr)
 		if err != nil {
-			return nil, errors.Wrapf(err, "parsing kdl tag for field %q", field.Name)
+			return nil, fmt.Errorf("parsing kdl tag for field %q: %w", field.Name, err)
 		}
 		ctx.tags[fieldIndex] = tag
 
@@ -220,19 +220,19 @@ func newStructContext(typ reflect.Type) (*structContext, error) {
 		}
 		if tag.flags&arguments != 0 {
 			if ctx.argsField != -1 {
-				return nil, errors.Errorf("multiple arguments fields in struct (field %q and %q in struct %s)", typ.Field(ctx.argsField).Name, field.Name, typ)
+				return nil, fmt.Errorf("multiple arguments fields in struct (field %q and %q in struct %s)", typ.Field(ctx.argsField).Name, field.Name, typ)
 			}
 			ctx.argsField = fieldIndex
 		}
 		if tag.flags&properties != 0 {
 			if ctx.propsField != -1 {
-				return nil, errors.Errorf("multiple properties fields in struct (field %q and %q in struct %s)", typ.Field(ctx.propsField).Name, field.Name, typ)
+				return nil, fmt.Errorf("multiple properties fields in struct (field %q and %q in struct %s)", typ.Field(ctx.propsField).Name, field.Name, typ)
 			}
 			ctx.propsField = fieldIndex
 		}
 		if tag.flags&children != 0 {
 			if ctx.childrenField != -1 {
-				return nil, errors.Errorf("multiple children fields in struct (field %q and %q in struct %s)", typ.Field(ctx.childrenField).Name, field.Name, typ)
+				return nil, fmt.Errorf("multiple children fields in struct (field %q and %q in struct %s)", typ.Field(ctx.childrenField).Name, field.Name, typ)
 			}
 			ctx.childrenField = fieldIndex
 		}

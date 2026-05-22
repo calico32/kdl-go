@@ -1,11 +1,10 @@
 package kdl
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // unmarshalNodesIntoStructFields unmarshals the given KDL nodes into a Go
@@ -18,7 +17,7 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, target reflect.V
 	noneFound := true
 	ctx, err := newStructContext(target.Type())
 	if err != nil {
-		return errors.Wrapf(err, "parsing struct tags for struct %s", target.Type())
+		return fmt.Errorf("parsing struct tags for struct %s: %w", target.Type(), err)
 	}
 
 	for _, node := range nodes {
@@ -31,13 +30,13 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, target reflect.V
 			noneFound = false
 			ctx.markFieldUsed(usedFieldIndex)
 		} else if d.strict {
-			return errors.Wrapf(ErrStrict, "no matching field found for node %q", node.name)
+			return fmt.Errorf("%w: no matching field found for node %q", ErrStrict, node.name)
 		}
 	}
 
 	// TODO: decide if this condition is desirable, also outside strict mode?
 	if noneFound && len(nodes) > 0 && target.Type().NumField() > 0 {
-		return errors.Errorf("%s: no matching fields found for any nodes unmarshaling into struct %s", nodes[0].loc, target.Type())
+		return fmt.Errorf("%s: no matching fields found for any nodes unmarshaling into struct %s", nodes[0].loc, target.Type())
 	}
 
 	if len(ctx.unusedFields) > 0 && d.strict {
@@ -47,9 +46,9 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, target reflect.V
 				sb.WriteString(", ")
 			}
 			tag := ctx.tags[i]
-			sb.WriteString(fmt.Sprintf("%q", tag.name))
+			fmt.Fprintf(&sb, "%q", tag.name)
 		}
-		return errors.Wrapf(ErrStrict, "missing values for struct fields: %s", sb.String())
+		return fmt.Errorf("%w: missing values for struct fields: %s", ErrStrict, sb.String())
 	}
 
 	if len(ctx.strictFields) > 0 {
@@ -59,9 +58,9 @@ func (d *decoder) unmarshalNodesIntoStructFields(nodes []*Node, target reflect.V
 				sb.WriteString(", ")
 			}
 			tag := ctx.tags[i]
-			sb.WriteString(fmt.Sprintf("%q", tag.name))
+			fmt.Fprintf(&sb, "%q", tag.name)
 		}
-		return errors.Wrapf(ErrStrict, "missing values for struct fields: %s", sb.String())
+		return fmt.Errorf("%w: missing values for struct fields: %s", ErrStrict, sb.String())
 	}
 
 	return nil
@@ -121,13 +120,13 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 
 	ctx, err := newStructContext(target.Type())
 	if err != nil {
-		return errors.Wrapf(err, "parsing struct tags for struct %s", target.Type())
+		return fmt.Errorf("parsing struct tags for struct %s: %w", target.Type(), err)
 	}
 
 	for argumentNum, fieldIndex := range ctx.argFields {
 		field := target.Field(fieldIndex)
 		if argumentNum >= len(node.args) && (d.strict || ctx.isFieldStrict(fieldIndex)) {
-			return errors.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.loc, argumentNum+1, node.name, target.Type())
+			return fmt.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.loc, argumentNum+1, node.name, target.Type())
 		}
 		if err := d.unmarshalValue(node.args[argumentNum], ctx.tags[fieldIndex], field); err != nil {
 			return err
@@ -136,7 +135,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 	}
 
 	if len(node.args) > len(ctx.argFields) && ctx.argsField == -1 && d.strict {
-		return errors.Wrapf(ErrStrict, "too many arguments (%d provided, %d expected)", len(node.args), len(ctx.argFields))
+		return fmt.Errorf("%w: too many arguments (%d provided, %d expected)", ErrStrict, len(node.args), len(ctx.argFields))
 	}
 
 	if ctx.argsField != -1 {
@@ -163,7 +162,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 			}
 		}
 		if !found && ctx.propsField == -1 && d.strict {
-			return errors.Wrapf(ErrStrict, "no matching field found for property %q", propName)
+			return fmt.Errorf("%w: no matching field found for property %q", ErrStrict, propName)
 		}
 	}
 
@@ -188,7 +187,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 			ctx.markChildUsed(childIndex)
 			ctx.markFieldUsed(usedFieldIndex)
 		} else if ctx.childrenField == -1 && d.strict {
-			return errors.Wrapf(ErrStrict, "no matching field found for node %q", node.name)
+			return fmt.Errorf("%w: no matching field found for node %q", ErrStrict, node.name)
 		}
 	}
 
@@ -214,7 +213,7 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 		len(ctx.usedChildren) == 0 &&
 		len(ctx.argFields) == 0 && ctx.argsField == -1 && ctx.propsField == -1 && ctx.childrenField == -1 &&
 		len(ctx.tags) > 0 {
-		return errors.Errorf("don't know what to do with node %q unmarshaling into struct %s", node.name, target.Type())
+		return fmt.Errorf("don't know what to do with node %q unmarshaling into struct %s", node.name, target.Type())
 	}
 
 	// report any missing strict fields
@@ -225,9 +224,9 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 				sb.WriteString(", ")
 			}
 			tag := ctx.tags[i]
-			sb.WriteString(fmt.Sprintf("%q", tag.name))
+			fmt.Fprintf(&sb, "%q", tag.name)
 		}
-		return errors.Wrapf(ErrStrict, "missing values for strict struct fields: %s", sb.String())
+		return fmt.Errorf("%w: missing values for strict struct fields: %s", ErrStrict, sb.String())
 	}
 
 	return nil
@@ -251,7 +250,7 @@ func (d *decoder) unmarshalValues(arguments []Value, tag structTag, target refle
 	switch target.Kind() {
 	case reflect.Array:
 		if len(arguments) != target.Len() {
-			return errors.Errorf("expected exactly %d arguments", target.Len())
+			return fmt.Errorf("expected exactly %d arguments", target.Len())
 		}
 		for i, arg := range arguments {
 			if err := d.unmarshalValue(arg, tag, target.Index(i)); err != nil {
@@ -287,12 +286,12 @@ func (d *decoder) unmarshalValues(arguments []Value, tag structTag, target refle
 			switch {
 			case hasIntKeys:
 				if target.Type().Key().OverflowInt(int64(i)) {
-					return errors.Errorf("argument index %d overflows map key type %s", i, target.Type().Key())
+					return fmt.Errorf("argument index %d overflows map key type %s", i, target.Type().Key())
 				}
 				key = reflect.ValueOf(i).Convert(target.Type().Key())
 			case hasUintKeys:
 				if target.Type().Key().OverflowUint(uint64(i)) {
-					return errors.Errorf("argument index %d overflows map key type %s", i, target.Type().Key())
+					return fmt.Errorf("argument index %d overflows map key type %s", i, target.Type().Key())
 				}
 				key = reflect.ValueOf(uint(i)).Convert(target.Type().Key())
 			case hasStringKeys:
@@ -307,7 +306,7 @@ func (d *decoder) unmarshalValues(arguments []Value, tag structTag, target refle
 		return nil
 
 	default:
-		return errors.Errorf("arguments field must be slice, array, or map, got %s", target.Type())
+		return fmt.Errorf("arguments field must be slice, array, or map, got %s", target.Type())
 	}
 }
 
@@ -342,7 +341,7 @@ func (d *decoder) unmarshalPropertiesField(location Location, properties map[str
 				return err
 			}
 			if target.MapIndex(key).IsValid() {
-				return errors.Errorf("%s: duplicate property %q unmarshaling into map", location, propName)
+				return fmt.Errorf("%s: duplicate property %q unmarshaling into map", location, propName)
 			}
 			target.SetMapIndex(key, value)
 		}
@@ -368,7 +367,7 @@ func (d *decoder) unmarshalPropertiesField(location Location, properties map[str
 				}
 			}
 			if !fieldFound && d.strict {
-				return errors.Wrapf(ErrStrict, "no matching field found for property %q", propName)
+				return fmt.Errorf("%w: no matching field found for property %q", ErrStrict, propName)
 			}
 		}
 		return nil
@@ -409,7 +408,7 @@ func (d *decoder) unmarshalChildrenField(children []*Node, tag structTag, target
 				return err
 			}
 			if target.MapIndex(key).IsValid() {
-				return errors.Errorf("%s: duplicate child %q unmarshaling into map", child.loc, child.name)
+				return fmt.Errorf("%s: duplicate child %q unmarshaling into map", child.loc, child.name)
 			}
 			target.SetMapIndex(key, value)
 		}
@@ -419,7 +418,7 @@ func (d *decoder) unmarshalChildrenField(children []*Node, tag structTag, target
 		return d.unmarshalNodesIntoStructFields(children, target)
 
 	default:
-		return errors.Errorf("properties field must be map or struct (got %s)", target.Type())
+		return fmt.Errorf("properties field must be map or struct (got %s)", target.Type())
 	}
 }
 

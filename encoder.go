@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // Encode marshals the given value into a KDL Document and writes its KDL
@@ -53,24 +51,24 @@ func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 	} else {
 		target = reflect.ValueOf(v)
 		if !target.IsValid() {
-			return nil, errors.Errorf("cannot marshal nil value")
+			return nil, fmt.Errorf("cannot marshal nil value")
 		}
 		for target.Kind() == reflect.Pointer {
 			target = target.Elem()
 			if !target.IsValid() {
-				return nil, errors.Errorf("cannot marshal nil pointer")
+				return nil, fmt.Errorf("cannot marshal nil pointer")
 			}
 		}
 
 		if target.Kind() == reflect.Interface {
 			target = target.Elem()
 			if !target.IsValid() {
-				return nil, errors.Errorf("cannot marshal nil interface")
+				return nil, fmt.Errorf("cannot marshal nil interface")
 			}
 			for target.Kind() == reflect.Pointer {
 				target = target.Elem()
 				if !target.IsValid() {
-					return nil, errors.Errorf("cannot marshal nil pointer inside interface")
+					return nil, fmt.Errorf("cannot marshal nil pointer inside interface")
 				}
 			}
 		}
@@ -117,7 +115,7 @@ func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 			return nil, err
 		}
 	default:
-		return nil, errors.Errorf("argument must be struct or map (marshaling document, got %s)", target.Kind())
+		return nil, fmt.Errorf("argument must be struct or map (marshaling document, got %s)", target.Kind())
 	}
 
 	return doc, nil
@@ -279,7 +277,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 					return err
 				}
 			default:
-				return errors.Errorf("unsupported properties field kind %s", field.Kind())
+				return fmt.Errorf("unsupported properties field kind %s", field.Kind())
 			}
 			continue
 		}
@@ -304,7 +302,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 				e.popContext()
 				continue
 			default:
-				return errors.Errorf("unsupported children field kind %s", field.Kind())
+				return fmt.Errorf("unsupported children field kind %s", field.Kind())
 			}
 		}
 
@@ -421,7 +419,7 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		}
 
 	default:
-		return errors.Errorf("unsupported value kind %s", target.Kind())
+		return fmt.Errorf("unsupported value kind %s", target.Kind())
 	}
 	return nil
 }

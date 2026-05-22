@@ -6,8 +6,6 @@ import (
 
 	"unicode/utf8"
 	"unsafe"
-
-	"github.com/pkg/errors"
 )
 
 type LexerState struct {
@@ -72,8 +70,8 @@ func (l *lexer) Restore(state LexerState) {
 }
 
 func (l *lexer) errorf(offset Pos, format string, args ...any) {
-	err := errors.Errorf(format, args...)
-	l.errors = append(l.errors, errors.Wrapf(err, "lex error at %s", l.file.Location(offset)))
+	err := fmt.Errorf(format, args...)
+	l.errors = append(l.errors, fmt.Errorf("lex error at %s: %w", l.file.Location(offset), err))
 	for _, handler := range l.errorHandlers {
 		handler(offset, err)
 	}
