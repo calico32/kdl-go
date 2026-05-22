@@ -250,24 +250,30 @@ func (n *Node) ChildrenInline() (inline, ok bool) {
 	return *n.childrenInline, true
 }
 
-// NewNode creates a new KDL node with the given name.
-func NewNode(name string) *Node {
-	return &Node{
+// NewNode creates a new KDL node with the given name and optional arguments.
+func NewNode(name string, args ...Value) *Node {
+	n := &Node{
 		name:  name,
 		props: map[string]Value{},
 	}
+	for _, arg := range args {
+		n.AddArgument(arg)
+	}
+	return n
 }
 
 // NewKV creates a new KDL node with the given name and a single argument
 // representing the given value.
 func NewKV[T intoValue](name string, value T) *Node {
-	return NewNode(name).AddArgument(NewValue(value))
+	return NewNode(name, NewValue(value))
 }
 
 // NewKValue creates a new KDL node with the given name and the given value as
 // an argument.
+//
+// Deprecated: Use NewNode instead, which this is now equivalent to.
 func NewKValue(name string, value Value) *Node {
-	return NewNode(name).AddArgument(value)
+	return NewNode(name, value)
 }
 
 // AddArgument adds a value as an argument to the KDL node and returns the node.

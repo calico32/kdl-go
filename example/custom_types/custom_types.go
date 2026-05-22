@@ -40,8 +40,7 @@ var _ kdl.Marshaler = &Job{}
 var _ kdl.Unmarshaler = &Job{}
 
 func (j *Job) MarshalKDL() (*kdl.Node, error) {
-	node := kdl.NewNode("job")
-	node.AddArgument(kdl.NewString(j.Name))
+	node := kdl.NewNode("job", kdl.NewString(j.Name))
 	node.AddProperty("command", kdl.NewString(j.Command))
 	node.AddProperty("interval", kdl.NewString(time.Duration(j.Interval).String()))
 	node.AddProperty("retries", kdl.NewInt(j.Retries))

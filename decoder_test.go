@@ -2,6 +2,8 @@ package kdl_test
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -419,5 +421,45 @@ func TestDecodeStructTagErrors(t *testing.T) {
 			t.Errorf("Expected error for illegal tag %s, but got none", tag)
 			return
 		}
+	}
+}
+
+func TestDecodeIntegerOverflow(t *testing.T) {
+	type T struct {
+		Int8   int8   `kdl:"int8"`
+		Uint8  uint8  `kdl:"uint8"`
+		Int16  int16  `kdl:"int16"`
+		Uint16 uint16 `kdl:"uint16"`
+		Int32  int32  `kdl:"int32"`
+		Uint32 uint32 `kdl:"uint32"`
+		Int64  int64  `kdl:"int64"`
+		Uint64 uint64 `kdl:"uint64"`
+	}
+
+	i64 := new(big.Int).SetInt64(math.MaxInt64)
+	i64.Add(i64, big.NewInt(1))
+	u64 := new(big.Int).SetUint64(math.MaxUint64)
+	u64.Add(u64, big.NewInt(1))
+
+	nodes := []*kdl.Node{
+		kdl.NewNode("int8", kdl.NewInt(math.MaxInt8+1)),
+		kdl.NewNode("uint8", kdl.NewInt(math.MaxUint8+1)),
+		kdl.NewNode("int16", kdl.NewInt(math.MaxInt16+1)),
+		kdl.NewNode("uint16", kdl.NewInt(math.MaxUint16+1)),
+		kdl.NewNode("int32", kdl.NewInt(math.MaxInt32+1)),
+		kdl.NewNode("uint32", kdl.NewInt(math.MaxUint32+1)),
+		kdl.NewNode("int64", kdl.NewBigInt(i64)),
+		kdl.NewNode("uint64", kdl.NewBigInt(u64)),
+	}
+
+	for _, node := range nodes {
+		t.Run(node.Name(), func(t *testing.T) {
+			var actual T
+			err := kdl.UnmarshalDocument(kdl.NewDocument(node), &actual)
+			if err == nil {
+				t.Errorf("Expected error for overflow in node %q, but got none", node.Name())
+				return
+			}
+		})
 	}
 }
