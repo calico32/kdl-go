@@ -203,6 +203,65 @@ func TestNodeEndLocation(t *testing.T) {
 	}
 }
 
+// TestFormatRoundtrip asserts that for every parseable input in the v2
+// conformance suite, Parse -> Format -> Parse yields a document that is
+// canonically equivalent to the original.
+func TestFormatRoundtrip(t *testing.T) {
+	dir := "kdl2/tests/test_cases/input"
+	cases, err := test.Kdl2Tests.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, caseFile := range cases {
+		name := caseFile.Name()
+		if strings.HasSuffix(name, "_fail.kdl") {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			f, err := test.Kdl2Tests.Open(filepath.Join(dir, name))
+			if err != nil {
+				t.Fatalf("open: %v", err)
+			}
+			src, err := io.ReadAll(f)
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+
+			doc1, err := kdl.Parse(strings.NewReader(string(src)), kdl.WithVersion(kdl.Version2))
+			if err != nil {
+				// Input doesn't parse cleanly; skip rather than fail — the
+				// conformance suite contains inputs without matching
+				// expected_kdl that this test isn't meant to evaluate.
+				t.Skipf("input does not parse: %v", err)
+				return
+			}
+
+			formatted := new(bytes.Buffer)
+			if err := kdl.Format(doc1, formatted); err != nil {
+				t.Fatalf("format: %v", err)
+			}
+
+			doc2, err := kdl.Parse(strings.NewReader(formatted.String()), kdl.WithVersion(kdl.Version2))
+			if err != nil {
+				t.Fatalf("re-parse of formatted output failed: %v\nFormatted:\n%s", err, formatted.String())
+			}
+
+			canon := func(d *kdl.Document) string {
+				var b strings.Builder
+				if err := kdl.Emit(d, &b, kdl.WithVersion(kdl.Version2), kdl.WithTestSuiteFloatOptions()); err != nil {
+					t.Fatalf("emit: %v", err)
+				}
+				return b.String()
+			}
+			before, after := canon(doc1), canon(doc2)
+			if before != after {
+				t.Errorf("round-trip changed canonical output\nBefore:\n%s\nAfter:\n%s\nFormatted source:\n%s", before, after, formatted.String())
+			}
+		})
+	}
+}
+
 func timeout[T any](duration time.Duration, f func() (T, error)) (result T, err error) {
 	done := make(chan struct{})
 	go func() {
