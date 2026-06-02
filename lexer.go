@@ -160,8 +160,11 @@ func (l *lexer) popMode() {
 }
 
 // text returns the substring of the source from start to end positions. It
-// avoids making a copy of the source data.
+// avoids making a copy of the source data. If end < start, text returns "".
 func (l *lexer) text(start Pos, end Pos) string {
+	if end <= start {
+		return ""
+	}
 	sl := unsafe.Pointer(unsafe.SliceData(l.file.src))
 	ptr := unsafe.Add(sl, start)
 	return unsafe.String((*byte)(ptr), end-start)

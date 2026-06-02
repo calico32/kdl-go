@@ -57,6 +57,9 @@ func (l *lexer) readQuotedString() token {
 			unescaped, err := unescapeString(content.String(), l.version)
 			if err != nil {
 				l.errorf(start, "invalid multi-line string: %s", err)
+				// unescape failed: bail out before we try to walk
+				// unescapedLines, which may be out of sync
+				return l.tok(tokenQuotedMultiLineString, start, "")
 			}
 			content.Reset()
 			unescapedLines := strings.Split(unescaped, "\n")
