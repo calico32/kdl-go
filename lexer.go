@@ -154,7 +154,7 @@ func (l *lexer) pushMode(mode lexerMode) {
 
 func (l *lexer) popMode() {
 	if len(l.modeStack) == 0 {
-		panic("lexer mode stack underflow")
+		panic("kdl.lex: popMode stack underflow")
 	}
 	l.modeStack = l.modeStack[:len(l.modeStack)-1]
 }
@@ -186,6 +186,6 @@ func (l *lexer) Next() (t token) {
 	case modeMultiLineComment:
 		return l.lexMultiLineComment()
 	default:
-		panic("unhandled lexer mode")
+		panic("kdl.lex: Next unhandled lexer mode")
 	}
 }

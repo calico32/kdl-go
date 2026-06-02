@@ -13,9 +13,12 @@ type keyType interface{ ~string | ~int }
 // the key (integer index for arguments, string for properties).
 //
 // If the key is missing, the resulting value and error will both be nil.
+//
+// Get panics if node is nil, or if K resolves to a type other than ~string or
+// ~int at runtime.
 func Get[K keyType](node *Node, key K) (*Value, error) {
 	if node == nil {
-		panic("kdl.Get(): nil node")
+		panic("kdl.Get: nil node")
 	}
 
 	switch key := any(key).(type) {
@@ -30,7 +33,7 @@ func Get[K keyType](node *Node, key K) (*Value, error) {
 		}
 		return nil, nil
 	default:
-		panic(fmt.Sprintf("Get(): unsupported key type %T", key))
+		panic(fmt.Sprintf("kdl.Get: unsupported key type %T", key))
 	}
 }
 
@@ -42,9 +45,12 @@ func Get[K keyType](node *Node, key K) (*Value, error) {
 // new index, filling in any missing indices with KDL nulls.
 // When setting a property, if the property does not already exist, it will be
 // added to the PropertyOrder slice to maintain the order of properties.
+//
+// Set panics if node is nil, if a negative integer index is supplied, or if K
+// resolves to a type other than ~string or ~int at runtime.
 func Set[K keyType](node *Node, key K, value Value) {
 	if node == nil {
-		panic("kdl.Set(): nil node")
+		panic("kdl.Set: nil node")
 	}
 
 	switch key := any(key).(type) {
@@ -67,7 +73,7 @@ func Set[K keyType](node *Node, key K, value Value) {
 		node.props[key] = value
 	case int:
 		if key < 0 {
-			panic(fmt.Sprintf("Set(): negative argument index %d", key))
+			panic(fmt.Sprintf("kdl.Set: negative argument index %d", key))
 		}
 		if key >= len(node.args) {
 			// Extend the Arguments slice to accommodate the new index
@@ -78,7 +84,7 @@ func Set[K keyType](node *Node, key K, value Value) {
 		}
 		node.args[key] = value
 	default:
-		panic(fmt.Sprintf("Set(): unsupported key type %T", key))
+		panic(fmt.Sprintf("kdl.Set: unsupported key type %T", key))
 	}
 }
 
@@ -86,10 +92,10 @@ func Set[K keyType](node *Node, key K, value Value) {
 // its first argument.
 //
 // If no such child exists, (nil, nil) is returned. If the child does not have
-// exactly one argument, an error is returned.
+// exactly one argument, an error is returned. GetKV panics if document is nil.
 func GetKV(document *Document, name string) (*Value, error) {
 	if document == nil {
-		panic("kdl.GetKV(): nil document")
+		panic("kdl.GetKV: nil document")
 	}
 
 	for _, child := range document.Nodes {
@@ -115,7 +121,9 @@ type intoValue interface {
 }
 
 // NewValue wraps a raw value with its corresponding KDL value type. It panics
-// if the value is not a valid KDL value.
+// if the value cannot be wrapped — that is, if [TryNewValue] would return a
+// non-nil error for v. Use [TryNewValue] when v's type is not known to be
+// supported.
 func NewValue[T intoValue](v T) Value {
 	val, err := TryNewValue(v)
 	if err != nil {
@@ -124,6 +132,10 @@ func NewValue[T intoValue](v T) Value {
 	return val
 }
 
+// TryNewValue attempts to wrap a raw value with its corresponding KDL value
+// type, returning an error if the value cannot be wrapped. It supports any type
+// that can be converted losslessly to a KDL value type, as well as any type
+// that implements [ValueMarshaler].
 func TryNewValue[T intoValue](v T) (Value, error) {
 	switch v := any(v).(type) {
 	case ValueMarshaler:
@@ -178,6 +190,6 @@ func TryNewValue[T intoValue](v T) (Value, error) {
 		}
 		return *v, nil
 	default:
-		return Value{}, fmt.Errorf("kdl.NewValue(): unsupported type %T", v)
+		return Value{}, fmt.Errorf("kdl.NewValue: unsupported type %T", v)
 	}
 }

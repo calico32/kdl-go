@@ -181,7 +181,7 @@ func (e *encoder) encodeStructFieldsAsNodes(target reflect.Value) error {
 		}
 		field := target.Field(i)
 		if !field.CanInterface() {
-			panic(fmt.Sprintf("kdl.encoder: unexported field %s.%s, should be unreachable",
+			panic(fmt.Sprintf("kdl.Encode: encodeStructFieldsAsNodes: unexported field %s.%s, should be unreachable",
 				target.Type(), target.Type().Field(i).Name))
 		}
 
@@ -214,7 +214,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 		}
 		field := target.Field(fieldIndex)
 		if !field.CanInterface() {
-			panic(fmt.Sprintf("kdl.encoder: unexported field %s.%s, should be unreachable",
+			panic(fmt.Sprintf("kdl.Encode: encodeStructAsNode: unexported field %s.%s, should be unreachable",
 				target.Type(), target.Type().Field(fieldIndex).Name))
 		}
 
@@ -448,7 +448,7 @@ func (e *encoder) encodeStructIntoProperties(node *Node, target reflect.Value) e
 		}
 		field := target.Field(i)
 		if !field.CanInterface() {
-			panic(fmt.Sprintf("kdl.encoder: unexported field %s.%s, should be unreachable",
+			panic(fmt.Sprintf("kdl.Encode: encodeStructIntoProperties: unexported field %s.%s, should be unreachable",
 				target.Type(), target.Type().Field(i).Name))
 		}
 

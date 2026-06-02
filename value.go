@@ -129,9 +129,10 @@ func (v Value) WithNumericLiteral(s string) Value {
 }
 
 // String returns the underlying string value if this value is of kind [String].
-// Unlike other accessor methods, it does not panic if the Value is not of kind
-// String and instead returns a string in the format "<kdl.KIND %v>", where KIND
-// is the ValueKind and %v is the raw value formatted by fmt.Printf.
+// Unlike the other typed accessor methods on Value, it does not panic on a kind
+// mismatch to safely implement [fmt.Stringer] for all kinds; instead it returns
+// a debug representation in the format "<kdl.KIND %v>", where KIND is the
+// [ValueKind] and %v is the raw value formatted by fmt.Printf.
 func (v Value) String() string {
 	if v.kind == String {
 		return v.raw.(string)
@@ -144,7 +145,7 @@ func (v Value) String() string {
 // panics if the Value is not of kind Int.
 func (v Value) Int() int {
 	if v.kind != Int {
-		panic("Int() on non-integer Value")
+		panic("kdl.Value: Int called on non-integer Value")
 	}
 	return v.raw.(int)
 }
@@ -153,7 +154,7 @@ func (v Value) Int() int {
 // It panics if the Value is not of kind Float.
 func (v Value) Float() float64 {
 	if v.kind != Float {
-		panic("Float() on non-float Value")
+		panic("kdl.Value: Float called on non-float Value")
 	}
 	return v.raw.(float64)
 }
@@ -162,7 +163,7 @@ func (v Value) Float() float64 {
 // [BigInt]. It panics if the Value is not of kind BigInt.
 func (v Value) BigInt() *big.Int {
 	if v.kind != BigInt {
-		panic("BigInt() on non-BigInt Value")
+		panic("kdl.Value: BigInt called on non-BigInt Value")
 	}
 	return new(big.Int).Set(v.raw.(*big.Int))
 }
@@ -171,7 +172,7 @@ func (v Value) BigInt() *big.Int {
 // [BigFloat]. It panics if the Value is not of kind BigFloat.
 func (v Value) BigFloat() *big.Float {
 	if v.kind != BigFloat {
-		panic("BigFloat() on non-BigFloat Value")
+		panic("kdl.Value: BigFloat called on non-BigFloat Value")
 	}
 	return new(big.Float).Set(v.raw.(*big.Float))
 }
@@ -180,7 +181,7 @@ func (v Value) BigFloat() *big.Float {
 // panics if the Value is not of kind Bool.
 func (v Value) Bool() bool {
 	if v.kind != Bool {
-		panic("Bool() on non-bool Value")
+		panic("kdl.Value: Bool called on non-bool Value")
 	}
 	return v.raw.(bool)
 }

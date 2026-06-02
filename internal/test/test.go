@@ -73,6 +73,6 @@ var _ fs.FileInfo = file{}
 func (f file) Name() string       { return f.name }
 func (f file) Size() int64        { return int64(f.Len()) }
 func (f file) IsDir() bool        { return false }
-func (f file) ModTime() time.Time { panic("unimplemented") }
-func (f file) Mode() fs.FileMode  { panic("unimplemented") }
+func (f file) ModTime() time.Time { panic("internal/test.file: ModTime unimplemented") }
+func (f file) Mode() fs.FileMode  { panic("internal/test.file: Mode unimplemented") }
 func (f file) Sys() any           { return nil }

@@ -162,7 +162,7 @@ func (f *formatter) bodyPlan(n *Node) []nodeEntryKind {
 	case ArgPropOrderArgsFirst:
 		return argPropPlan(nArgs, nProps, true)
 	default:
-		panic(fmt.Sprintf("invalid ArgPropOrder: %v", f.argPropOrder))
+		panic(fmt.Sprintf("kdl.Format: bodyPlan invalid ArgPropOrder: %v", f.argPropOrder))
 	}
 }
 
@@ -620,7 +620,7 @@ func (f *formatter) valueToString(v Value) string {
 			b.WriteString("#null")
 		}
 	default:
-		panic(fmt.Errorf("formatter.valueToString: unknown value kind %v", v.Kind()))
+		panic(fmt.Errorf("kdl.Format: valueToString unknown value kind %v", v.Kind()))
 	}
 	return b.String()
 }

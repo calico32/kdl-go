@@ -139,7 +139,7 @@ func (d *decoder) unmarshalInt(v Value, tag structTag, target reflect.Value) err
 
 func (d *decoder) setInt(target reflect.Value, value int64) error {
 	if !target.CanInt() {
-		panic("setInt called on non-int target")
+		panic("kdl.Decode: setInt called on non-int target")
 	}
 	if target.OverflowInt(value) {
 		return fmt.Errorf("integer value %d overflows target type %s", value, target.Type().String())
@@ -219,7 +219,7 @@ func (d *decoder) unmarshalUint(v Value, tag structTag, target reflect.Value) er
 
 func (d *decoder) setUint(target reflect.Value, value uint64) error {
 	if !target.CanUint() {
-		panic("setUint called on non-uint target")
+		panic("kdl.Decode: setUint called on non-uint target")
 	}
 	if target.OverflowUint(value) {
 		return fmt.Errorf("unsigned integer value %d overflows target type %s", value, target.Type().String())

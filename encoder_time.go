@@ -33,7 +33,7 @@ func formatTimeValue(t time.Time, format string) (Value, error) {
 		return NewInt(int(t.UnixNano())), nil
 	default:
 		// decodeFormat returned an unsupported base?
-		panic(fmt.Sprintf("invalid time format base %d", base))
+		panic(fmt.Sprintf("kdl.Encode: formatTimeValue invalid time format base %d", base))
 	}
 }
 

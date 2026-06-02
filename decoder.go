@@ -210,7 +210,7 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 
 	case reflect.Array:
 		if tag.flags&multiple != 0 {
-			panic("unimplemented: multiple flag on array type")
+			panic("kdl.Decode: unimplemented: unmarshalNode multiple flag on array type")
 		}
 		if len(node.args) != target.Len() {
 			return fmt.Errorf("expected exactly %d arguments", target.Len())
