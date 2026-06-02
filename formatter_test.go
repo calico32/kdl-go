@@ -1172,3 +1172,25 @@ func TestFormatPreserveCommentsInChildren(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatPreserveStringLiterals(t *testing.T) {
+	vals := []string{
+		`#"raw"#`,
+		`###"raw with extra #s"###`,
+		`"""` + "\nmultiline\n" + `"""`,
+		`"""` + "\nmultiline\nline 2\n" + `"""`,
+		`#"""` + "\nraw nmultiline\n" + `"""#`,
+		`#"""` + "\nraw nmultiline\nline 2\n" + `"""#`,
+		`###"""` + "\nraw nmultiline with extra #s\n" + `"""###`,
+	}
+	for _, val := range vals {
+		t.Run(val, func(t *testing.T) {
+			doc := parseDoc(t, "node "+val)
+			got := mustFormat(t, doc)
+			want := "node " + val + "\n"
+			if got != want {
+				t.Errorf("\ngot >|%s|<\nwant >|%s|<", got, want)
+			}
+		})
+	}
+}

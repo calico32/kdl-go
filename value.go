@@ -66,6 +66,10 @@ type Value struct {
 	// (integers, floats in any base/format). Empty for programmatically created
 	// values.
 	numericLiteral string
+	// stringLiteral holds the exact source text for parsed string values
+	// (quoted, raw, or multi-line, including delimiters). Empty for
+	// programmatically created values.
+	stringLiteral string
 }
 
 func (v Value) TypeAnnotation() (string, bool) { return v.typ, v.typeValid }
@@ -125,6 +129,24 @@ func (v Value) NumericLiteral() (string, bool) {
 // that should round-trip to a specific textual form.
 func (v Value) WithNumericLiteral(s string) Value {
 	v.numericLiteral = s
+	return v
+}
+
+// StringLiteral returns the original source text of the string value
+// (including its delimiters), if this value was produced by parsing source
+// code. Returns ("", false) for programmatically created values.
+func (v Value) StringLiteral() (string, bool) {
+	if v.stringLiteral == "" {
+		return "", false
+	}
+	return v.stringLiteral, true
+}
+
+// WithStringLiteral stores the original source text of a string value.
+// This is called by the parser; it can also be used when constructing Values
+// that should round-trip to a specific textual form.
+func (v Value) WithStringLiteral(s string) Value {
+	v.stringLiteral = s
 	return v
 }
 

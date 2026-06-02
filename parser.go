@@ -657,6 +657,9 @@ func (p *parser) parseNode() (n *Node) {
 						p.errorf(p.token.Pos, "unexpected identifier %s (must be quoted)", s)
 					}
 					arg := NewString(s)
+					if shouldPreserveStringLiteral(typ) {
+						arg.stringLiteral = p.lexer.text(keyStart, keyEnd)
+					}
 					if p.withLocations {
 						arg = arg.WithLocation(p.lexer.File().Location(keyStart))
 						arg = arg.WithEndLocation(p.lexer.File().Location(keyEnd))
@@ -665,6 +668,9 @@ func (p *parser) parseNode() (n *Node) {
 					n.entries = append(n.entries, nodeEntryArg)
 				} else {
 					arg := NewString(s)
+					if shouldPreserveStringLiteral(typ) {
+						arg.stringLiteral = p.lexer.text(keyStart, keyEnd)
+					}
 					if p.withLocations {
 						arg = arg.WithLocation(p.lexer.File().Location(keyStart))
 						arg = arg.WithEndLocation(p.lexer.File().Location(keyEnd))
@@ -768,6 +774,20 @@ func (p *parser) parseString() string {
 	}
 }
 
+// shouldPreserveStringLiteral reports whether the given token type is one whose
+// literal value should be preserved when round-tripping, such as raw or
+// multiline strings. For these, their syntax and not just their value is
+// semantically significant, so we record the literal text in the Value for use
+// when formatting.
+func shouldPreserveStringLiteral(t tokenType) bool {
+	switch t {
+	case tokenRawString, tokenRawMultiLineString, tokenQuotedMultiLineString:
+		return true
+	default:
+		return false
+	}
+}
+
 // parseValue parses a KDL string, number, or keyword and returns it.
 //
 //	number := keyword-number | hex | octal | binary | decimal
@@ -799,6 +819,9 @@ func (p *parser) parseValue() Value {
 		tokenRawString, tokenRawMultiLineString:
 		str := p.parseString()
 		value = NewString(str)
+		if shouldPreserveStringLiteral(tok.Type) {
+			value.stringLiteral = p.lexer.text(tok.Pos, tok.EndPos)
+		}
 	case tokenTrue:
 		p.next()
 		value = NewBool(true)

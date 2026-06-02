@@ -582,7 +582,11 @@ func (f *formatter) valueToString(v Value) string {
 	}
 	switch v.Kind() {
 	case String:
-		b.WriteString(f.stringToKDL(v.String()))
+		if lit, ok := v.StringLiteral(); ok {
+			b.WriteString(lit)
+		} else {
+			b.WriteString(f.stringToKDL(v.String()))
+		}
 	case Int:
 		if lit, ok := v.NumericLiteral(); ok {
 			b.WriteString(lit)
