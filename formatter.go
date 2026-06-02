@@ -347,9 +347,18 @@ func (f *formatter) formatNodeBody(n *Node, prefix string) {
 
 	children := n.Children().Nodes
 	_, hasSourceChildren := n.ChildrenInline()
-	if len(children) > 0 || hasSourceChildren {
-		if len(children) == 0 {
+	childComments := n.Children().TrailingComments
+	if len(children) > 0 || hasSourceChildren || len(childComments) > 0 {
+		if len(children) == 0 && len(childComments) == 0 {
 			f.write(" {}")
+		} else if len(children) == 0 {
+			// comments only
+			f.write(" {\n")
+			f.indentLevel++
+			f.formatDocument(n.Children())
+			f.indentLevel--
+			f.writeIndent()
+			f.write("}")
 		} else {
 			sourceInline, hasSourceInline := n.ChildrenInline()
 			forceMultiline := hasSourceInline && !sourceInline

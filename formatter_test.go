@@ -1157,3 +1157,18 @@ func TestFormatWriteToWriter(t *testing.T) {
 		t.Errorf("got %q", sb.String())
 	}
 }
+
+func TestFormatPreserveCommentsInChildren(t *testing.T) {
+	srcs := []string{
+		"parent {\n\t/- child\n\tother\n}\n",
+		"parent {\n\tchild\n\t/- sibling\n}\n",
+		"parent {\n\t/- child\n}\n",
+		"parent {\n\t// child\n}\n",
+		"parent {\n\t/* child */\n}\n",
+	}
+	for _, src := range srcs {
+		t.Run(src, func(t *testing.T) {
+			checkFormat(t, src, src)
+		})
+	}
+}
