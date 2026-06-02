@@ -151,11 +151,17 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 	}
 
 	// special handling for time.Time and time.Duration
-	if target.Type() == timeType || target.Type() == durationType {
+	if target.Type() == timeType {
 		if len(node.args) != 1 {
 			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
 		return d.unmarshalTime(node.args[0], tag, target)
+	}
+	if target.Type() == durationType {
+		if len(node.args) != 1 {
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
+		}
+		return d.unmarshalDuration(node.args[0], tag, target)
 	}
 
 	switch target.Kind() {

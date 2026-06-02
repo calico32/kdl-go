@@ -109,6 +109,10 @@ func mayApplyDurationSign(n uint64, neg bool) time.Duration {
 	}
 }
 
+// decodeFormat decodes a time format string, returning the base and format to
+// use for parsing. If the format is invalid (i.e., it is a Go identifier that
+// is not a known time format), then the base will be math.MaxUint and the
+// format will be empty.
 func decodeFormat(fmt string) (base uint64, format string) {
 	// We assume that an exported constant in the time package will
 	// always start with an uppercase ASCII letter.

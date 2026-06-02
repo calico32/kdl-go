@@ -4,9 +4,22 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calico32/kdl-go"
 )
+
+type EncoderTimes struct {
+	DefaultT  time.Time     `kdl:"default-t"`
+	RFC3339T  time.Time     `kdl:"rfc-t,format:RFC3339"`
+	UnixT     time.Time     `kdl:"unix-t,format:unix"`
+	UnixMsT   time.Time     `kdl:"unix-ms-t,format:unixmilli"`
+	DateOnlyT time.Time     `kdl:"date-t,format:DateOnly"`
+	UnitsD    time.Duration `kdl:"units-d"`
+	SecD      time.Duration `kdl:"sec-d,format:sec"`
+	MilliD    time.Duration `kdl:"milli-d,format:milli"`
+	NanoD     time.Duration `kdl:"nano-d,format:nano"`
+}
 
 type EncoderPerson struct {
 	Name    string `kdl:"name"`
@@ -191,6 +204,31 @@ var encoderTests = []struct {
 		`,
 	},
 	{
+		"time encoding",
+		EncoderTimes{
+			DefaultT:  time.Date(2024, 1, 2, 15, 4, 5, 0, time.UTC),
+			RFC3339T:  time.Date(2024, 1, 2, 15, 4, 5, 0, time.UTC),
+			UnixT:     time.Unix(1704207845, 0).UTC(),
+			UnixMsT:   time.Unix(1704207845, 500_000_000).UTC(),
+			DateOnlyT: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+			UnitsD:    2*time.Hour + 30*time.Minute,
+			SecD:      90 * time.Second,
+			MilliD:    1500 * time.Millisecond,
+			NanoD:     250 * time.Nanosecond,
+		},
+		`
+			default-t "2024-01-02T15:04:05Z"
+			rfc-t "2024-01-02T15:04:05Z"
+			unix-t 1704207845
+			unix-ms-t 1704207845500
+			date-t "2024-01-02"
+			units-d "2h30m0s"
+			sec-d 90
+			milli-d 1500
+			nano-d 250
+		`,
+	},
+	{
 		"document marshaler",
 		&EncoderCustomDocumentMarshaler{
 			Title: "Document Only",
@@ -234,6 +272,52 @@ func TestEncoder(t *testing.T) {
 				t.Errorf("marshaled document does not match expected\nExpected:\n%s\nGot:\n%s", expected, actual)
 			}
 		})
+	}
+}
+
+func TestEncodeDecodeTimeRoundtrip(t *testing.T) {
+	original := EncoderTimes{
+		DefaultT:  time.Date(2024, 1, 2, 15, 4, 5, 0, time.UTC),
+		RFC3339T:  time.Date(2024, 1, 2, 15, 4, 5, 0, time.Local),
+		UnixT:     time.Unix(1704207845, 0).UTC(),
+		UnixMsT:   time.Unix(1704207845, 500_000_000).UTC(),
+		DateOnlyT: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+		UnitsD:    2*time.Hour + 30*time.Minute,
+		SecD:      90 * time.Second,
+		MilliD:    1500 * time.Millisecond,
+		NanoD:     250 * time.Nanosecond,
+	}
+
+	s, err := kdl.EncodeToString(original)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	var decoded EncoderTimes
+	if err := kdl.Decode(strings.NewReader(s), &decoded); err != nil {
+		t.Fatalf("decode: %v\nKDL was:\n%s", err, s)
+	}
+
+	if !decoded.DefaultT.Equal(original.DefaultT) {
+		t.Errorf("DefaultT: got %v, want %v", decoded.DefaultT, original.DefaultT)
+	}
+	if !decoded.UnixT.Equal(original.UnixT) {
+		t.Errorf("UnixT: got %v, want %v", decoded.UnixT, original.UnixT)
+	}
+	if !decoded.UnixMsT.Equal(original.UnixMsT) {
+		t.Errorf("UnixMsT: got %v, want %v", decoded.UnixMsT, original.UnixMsT)
+	}
+	if decoded.UnitsD != original.UnitsD {
+		t.Errorf("UnitsD: got %v, want %v", decoded.UnitsD, original.UnitsD)
+	}
+	if decoded.SecD != original.SecD {
+		t.Errorf("SecD: got %v, want %v", decoded.SecD, original.SecD)
+	}
+	if decoded.MilliD != original.MilliD {
+		t.Errorf("MilliD: got %v, want %v", decoded.MilliD, original.MilliD)
+	}
+	if decoded.NanoD != original.NanoD {
+		t.Errorf("NanoD: got %v, want %v", decoded.NanoD, original.NanoD)
 	}
 }
 

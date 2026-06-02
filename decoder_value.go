@@ -419,7 +419,7 @@ func (d *decoder) unmarshalTime(v Value, tag structTag, target reflect.Value) er
 
 	origFormat := format
 	base, format := decodeFormat(format)
-	if format == "" {
+	if format == "" && base == math.MaxUint {
 		return fmt.Errorf("unknown time format %q", origFormat)
 	}
 
@@ -457,7 +457,7 @@ func (d *decoder) unmarshalTime(v Value, tag structTag, target reflect.Value) er
 func (d *decoder) unmarshalDuration(v Value, tag structTag, target reflect.Value) error {
 	base := uint64(0)
 	switch tag.format {
-	case "units":
+	case "", "units":
 		base = 0
 	case "sec":
 		base = 1e9

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Encode marshals the given value into a KDL Document and writes its KDL
@@ -223,7 +224,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 
 		if tag.flags&argument != 0 {
 			e.tracef("argument: %s %s\n", tag.name, field.Type())
-			value, err := TryNewValue(field.Interface())
+			value, err := e.toValue(field, tag.format)
 			if err != nil {
 				return err
 			}
@@ -237,7 +238,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 				if tag.flags&omitzero != 0 && field.Index(i).IsZero() {
 					continue
 				}
-				value, err := TryNewValue(field.Index(i).Interface())
+				value, err := e.toValue(field.Index(i), tag.format)
 				if err != nil {
 					return err
 				}
@@ -248,7 +249,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 
 		if tag.flags&property != 0 {
 			e.tracef("property: %s %s\n", tag.name, field.Type())
-			value, err := TryNewValue(field.Interface())
+			value, err := e.toValue(field, tag.format)
 			if err != nil {
 				return err
 			}
@@ -265,7 +266,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 					if tag.flags&omitzero != 0 && val.IsZero() {
 						continue
 					}
-					value, err := TryNewValue(val.Interface())
+					value, err := e.toValue(val, tag.format)
 					if err != nil {
 						return err
 					}
@@ -374,6 +375,15 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		target = target.Elem()
 	}
 
+	if target.Type() == timeType || target.Type() == durationType {
+		value, err := e.toValue(target, tag.format)
+		if err != nil {
+			return err
+		}
+		e.currentContext().AddNode(NewNode(name, value))
+		return nil
+	}
+
 	switch target.Kind() {
 	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
@@ -382,7 +392,7 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		if err != nil {
 			return err
 		}
-		childNode := NewKValue(name, value)
+		childNode := NewNode(name, value)
 		e.currentContext().AddNode(childNode)
 
 	case reflect.Struct:
@@ -404,7 +414,7 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		}
 		child := NewNode(name)
 		for i := 0; i < target.Len(); i++ {
-			value, err := TryNewValue(target.Index(i).Interface())
+			value, err := e.toValue(target.Index(i), tag.format)
 			if err != nil {
 				return err
 			}
@@ -446,7 +456,7 @@ func (e *encoder) encodeStructIntoProperties(node *Node, target reflect.Value) e
 			continue
 		}
 
-		value, err := TryNewValue(field.Interface())
+		value, err := e.toValue(field, tag.format)
 		if err != nil {
 			return err
 		}
@@ -518,7 +528,7 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 		if err != nil {
 			return false, err
 		}
-		childNode := NewKValue(name, v)
+		childNode := NewNode(name, v)
 		e.currentContext().AddNode(childNode)
 		return true, nil
 	}
@@ -529,10 +539,23 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 		if err != nil {
 			return false, err
 		}
-		childNode := NewKValue(name, v)
+		childNode := NewNode(name, v)
 		e.currentContext().AddNode(childNode)
 		return true, nil
 	}
 
 	return false, nil
+}
+
+// toValue converts the given reflect.Value to a KDL Value, applying any
+// specified formatting for time or duration types. It returns an error if the
+// value cannot be converted to a KDL Value.
+func (e *encoder) toValue(target reflect.Value, format string) (Value, error) {
+	switch target.Type() {
+	case timeType:
+		return formatTimeValue(target.Interface().(time.Time), format)
+	case durationType:
+		return formatDurationValue(target.Interface().(time.Duration), format)
+	}
+	return TryNewValue(target.Interface())
 }
