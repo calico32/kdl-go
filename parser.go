@@ -8,7 +8,12 @@ import (
 	"strings"
 )
 
-// Parse parses a KDL document from the provided reader and returns it.
+// Parse parses a KDL document from the provided reader and returns it. If the
+// input is not valid KDL, Parse returns a non-nil error describing the first
+// parse error encountered.
+//
+// For more detailed error reporting and diagnostics, use [ParseWithDiagnostics]
+// instead.
 func Parse(r io.Reader, opts ...ParseOption) (*Document, error) {
 	return ParseNamed("<input>", r, opts...)
 }
@@ -34,7 +39,8 @@ func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error
 // ParseWithDiagnostics parses a KDL document and returns a [ParseResult]
 // containing a (possibly partial) document and all diagnostics. Unlike [Parse],
 // it never returns an error for parse problems — check [ParseResult.HasErrors]
-// or inspect [ParseResult.Diagnostics] instead.
+// or inspect [ParseResult.Diagnostics] instead (any non-nil error is from the
+// underlying reader, not the parser).
 func ParseWithDiagnostics(r io.Reader, opts ...ParseOption) (*ParseResult, error) {
 	return ParseNamedWithDiagnostics("<input>", r, opts...)
 }
@@ -47,6 +53,42 @@ func ParseNamedWithDiagnostics(name string, r io.Reader, opts ...ParseOption) (*
 		return nil, err
 	}
 	return parseWithDiagnosticsFromBytes(name, src, opts...), nil
+}
+
+// ParseString is a convenience wrapper around [Parse] for string inputs. It
+// returns a non-nil error describing the first parse error encountered if the
+// input is not valid KDL.
+func ParseString(src string, opts ...ParseOption) (*Document, error) {
+	return ParseNamedString("<input>", src, opts...)
+}
+
+// ParseNamedString is like [ParseString] but lets you name the input source so
+// that locations in diagnostics reference that name.
+func ParseNamedString(name, src string, opts ...ParseOption) (*Document, error) {
+	result := parseWithDiagnosticsFromBytes(name, []byte(src), opts...)
+	if result.HasErrors() {
+		for _, d := range result.Diagnostics {
+			if d.Severity == SeverityError {
+				return nil, fmt.Errorf("parse error at %s: %s", d.Start, d.Message)
+			}
+		}
+	}
+	return result.Document, nil
+}
+
+// ParseStringWithDiagnostics is a convenience wrapper around
+// [ParseWithDiagnostics] for string inputs. It never returns an error for parse
+// problems — check [ParseResult.HasErrors] or inspect [ParseResult.Diagnostics]
+// instead.
+func ParseStringWithDiagnostics(src string, opts ...ParseOption) *ParseResult {
+	return ParseNamedStringWithDiagnostics("<input>", src, opts...)
+}
+
+// ParseNamedStringWithDiagnostics is like [ParseStringWithDiagnostics] but lets
+// you name the input source so that locations in diagnostics reference that
+// name.
+func ParseNamedStringWithDiagnostics(name, src string, opts ...ParseOption) *ParseResult {
+	return parseWithDiagnosticsFromBytes(name, []byte(src), opts...)
 }
 
 // parseWithDiagnosticsFromBytes parses src and settles on a concrete KDL
