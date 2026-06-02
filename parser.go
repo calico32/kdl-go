@@ -20,10 +20,7 @@ func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error
 	if err != nil {
 		return nil, err
 	}
-	result, err := parseWithDiagnosticsFromBytes(name, src, opts...)
-	if err != nil {
-		return nil, err
-	}
+	result := parseWithDiagnosticsFromBytes(name, src, opts...)
 	if result.HasErrors() {
 		for _, d := range result.Diagnostics {
 			if d.Severity == SeverityError {
@@ -49,50 +46,168 @@ func ParseNamedWithDiagnostics(name string, r io.Reader, opts ...ParseOption) (*
 	if err != nil {
 		return nil, err
 	}
-	return parseWithDiagnosticsFromBytes(name, src, opts...)
+	return parseWithDiagnosticsFromBytes(name, src, opts...), nil
 }
 
-func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption) (*ParseResult, error) {
-	version := VersionAuto
+// parseWithDiagnosticsFromBytes parses src and settles on a concrete KDL
+// version.
+//
+//   - If an explicit version is requested via WithVersion, the parser uses that
+//     version and that version only, never falling back to a different version.
+//     The document and diagnostics are returned as-is.
+//   - Otherwise, the parse is first attempted at v2 and then at v1 if v2 had
+//     errors or if a v1 marker is present. If only one succeeds, that version
+//     is returned. If both succeed or both fail, the marker is consulted as a
+//     tiebreaker.
+//   - A document that parses cleanly as both v1 and v2 or fails to parse as
+//     both v1 and v2 will return the version indicated by the marker if
+//     present, or a version detected by heuristics if not.
+//   - A version marker that is malformed or doesn't match the settled version
+//     raises a warning but does not cause the parser to change course on its
+//     own.
+//
+// The returned ParseResult.Version is always concrete (Version1 or Version2),
+// never VersionAuto.
+func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption) *ParseResult {
+	requested := VersionAuto
 	for _, opt := range opts {
-		if opt, ok := opt.(versionOption); ok {
-			version = opt.v
-			break
+		if vo, ok := opt.(versionOption); ok {
+			requested = vo.v
 		}
 	}
-	l := newLexer(name, src, nil, version)
-	p := newParser(l, nil, opts...)
-	doc, diags := p.ParseDocument()
 
-	hasErrors := func(ds []Diagnostic) bool {
-		for _, d := range ds {
-			if d.Severity == SeverityError {
-				return true
+	// parseAs parses the whole source as a specific concrete version.
+	parseAs := func(v Version) (*Document, []Diagnostic) {
+		vOpts := append(append([]ParseOption{}, opts...), WithVersion(v))
+		p := newParser(newLexer(name, src, nil, v), nil, vOpts...)
+		return p.ParseDocument()
+	}
+
+	zeroLoc := Location{Filename: name}
+	mismatchDiag := func(vd VersionDirective, settled Version) Diagnostic {
+		return Diagnostic{
+			Start:    vd.Start,
+			End:      vd.End,
+			Severity: SeverityWarning,
+			Message:  fmt.Sprintf("document declares kdl-version %s but parsed as %s", vd.Version, settled),
+			Code:     DiagParseVersionMarkerMismatch,
+		}
+	}
+	malformedDiag := func(vd VersionDirective) Diagnostic {
+		return Diagnostic{
+			Start:    vd.Start,
+			End:      vd.End,
+			Severity: SeverityWarning,
+			Message:  vd.Err,
+			Code:     DiagParseVersionMarkerInvalid,
+		}
+	}
+	infoDiag := func(msg string) Diagnostic {
+		return Diagnostic{
+			Start:    zeroLoc,
+			End:      zeroLoc,
+			Severity: SeverityInfo,
+			Message:  msg,
+			Code:     DiagParseVersionAutoFallback,
+		}
+	}
+	hintDiag := func(msg string) Diagnostic {
+		return Diagnostic{
+			Start:    zeroLoc,
+			End:      zeroLoc,
+			Severity: SeverityHint,
+			Message:  msg,
+			Code:     DiagParseVersionAutoFallback,
+		}
+	}
+
+	// explicit version requested - no fallback
+	if requested != VersionAuto {
+		doc, diags := parseAs(requested)
+		if vd, found := ExtractVersionDirective(doc); found {
+			if vd.Err == "" && vd.Version != requested {
+				diags = append([]Diagnostic{mismatchDiag(vd, requested)}, diags...)
 			}
+			// ignore malformed marker - version option request is already an
+			// explicit override
 		}
-		return false
+		return &ParseResult{Document: doc, Diagnostics: diags, Version: requested}
 	}
 
-	if !hasErrors(diags) || p.version != VersionAuto {
-		v := p.version
-		if v == VersionAuto {
-			v = Version2
+	v2doc, v2diags := parseAs(Version2)
+	v2clean := !hasErrorDiag(v2diags)
+
+	var markerV Version // == VersionAuto for no marker or malformed marker
+	var meta []Diagnostic
+	if vd, found := ExtractVersionDirective(v2doc); found {
+		if vd.Err != "" {
+			// malformed marker - warn and continue as if no marker was present
+			meta = append(meta, malformedDiag(vd))
+		} else {
+			// marker OK - record it for tie-breaking if needed
+			markerV = vd.Version
 		}
-		return &ParseResult{Document: doc, Diagnostics: diags, Version: v}, nil
 	}
 
-	// try again as v1
-	v1Opts := append(append([]ParseOption{}, opts...), WithVersion(Version1))
-	l2 := newLexer(name, src, nil, Version1)
-	p2 := newParser(l2, nil, v1Opts...)
-	doc2, diags2 := p2.ParseDocument()
-	if !hasErrors(diags2) {
-		return &ParseResult{Document: doc2, Diagnostics: diags2, Version: Version1}, nil
+	// fast path: v2 is clean and nothing indicates we need to try v1
+	if v2clean && (markerV == VersionAuto || markerV == Version2) {
+		return &ParseResult{Document: v2doc, Diagnostics: append(meta, v2diags...), Version: Version2}
 	}
-	if detectV1(string(src)) {
-		return &ParseResult{Document: doc2, Diagnostics: diags2, Version: Version1}, nil
+
+	// we need v1 (v2 had errors, or the marker prefers v1)
+	v1doc, v1diags := parseAs(Version1)
+	v1clean := !hasErrorDiag(v1diags)
+
+	switch {
+	case v2clean && v1clean:
+		// both clean, but marker says v1 - return v1
+		return &ParseResult{Document: v1doc, Diagnostics: append(meta, v1diags...), Version: Version1}
+
+	case v2clean: // only v2 clean
+		if markerV == Version1 {
+			// only parses as v2 but marker says v1 - warn and return v2
+			meta = append(meta, mismatchDiag(VersionDirective{Start: zeroLoc, End: zeroLoc, Version: Version1}, Version2))
+		}
+		return &ParseResult{Document: v2doc, Diagnostics: append(meta, v2diags...), Version: Version2}
+
+	case v1clean: // only v1 clean (v2 had errors)
+		switch markerV {
+		case Version2:
+			// only parses as v1 but marker says v2 - warn and return v1
+			meta = append(meta, mismatchDiag(VersionDirective{Start: zeroLoc, End: zeroLoc, Version: Version2}, Version1))
+		case VersionAuto:
+			// hint diag that we auto-detected v1 since v2 had errors and no marker was present
+			meta = append(meta, hintDiag("parsed as KDL v1 (did not parse as KDL v2)"))
+		}
+		return &ParseResult{Document: v1doc, Diagnostics: append(meta, v1diags...), Version: Version1}
+
+	default: // neither parses cleanly
+		switch markerV {
+		case Version1:
+			// marker says v1, return v1 doc/diags
+			return &ParseResult{Document: v1doc, Diagnostics: append(meta, v1diags...), Version: Version1}
+		case Version2:
+			// marker says v2, return v2 doc/diags
+			return &ParseResult{Document: v2doc, Diagnostics: append(meta, v2diags...), Version: Version2}
+		}
+		// guess version by heuristics (last resort), add info diag for clarity
+		if detectV1(string(src)) {
+			meta = append(meta, infoDiag("input has KDL v1 markers; showing v1 parser diagnostics"))
+			return &ParseResult{Document: v1doc, Diagnostics: append(meta, v1diags...), Version: Version1}
+		}
+		meta = append(meta, infoDiag("input failed to parse as both KDL v2 and v1; showing v2 parser diagnostics"))
+		return &ParseResult{Document: v2doc, Diagnostics: append(meta, v2diags...), Version: Version2}
 	}
-	return &ParseResult{Document: doc, Diagnostics: diags, Version: Version2}, nil
+}
+
+// hasErrorDiag reports whether any diagnostic has SeverityError.
+func hasErrorDiag(ds []Diagnostic) bool {
+	for _, d := range ds {
+		if d.Severity == SeverityError {
+			return true
+		}
+	}
+	return false
 }
 
 type ParseOption interface {
