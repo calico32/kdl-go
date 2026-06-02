@@ -14,15 +14,16 @@
 // [DocumentUnmarshaler], [Marshaler], [Unmarshaler], [ValueMarshaler], or
 // [ValueUnmarshaler] for more control over the process.
 //
-// For lower-level access, [Parse] and [Emit] can be used to parse and emit KDL
-// documents from and to an in-memory representation, defined by the [Document],
-// [Node], and [Value] types. These types can also be used directly to build or
-// manipulate KDL documents programmatically without marshaling or unmarshaling.
-// Use [NewDocument], [NewNode], [NewKV], [NewValue], and related functions and
-// methods to create KDL documents, nodes, key-value nodes, and values.
+// For lower-level access, [Parse] and [Emit]/[Format] can be used to parse and
+// emit KDL documents from and to an in-memory representation, defined by the
+// [Document], [Node], and [Value] types. These types can also be used directly
+// to build or manipulate KDL documents programmatically without marshaling or
+// unmarshaling. Use [NewDocument], [NewNode], [NewKV], [NewValue], and related
+// functions and methods to create KDL documents, nodes, key-value nodes, and
+// values.
 //
-// Other features include pretty-printing via [Format], AST traversal via
-// [Walk], and KDL Schema validation via [ParseSchema] and [ValidateDocument].
+// Other features include AST traversal via [Walk], and KDL Schema validation
+// via [ParseSchema] and [ValidateDocument].
 //
 // [KDL]: https://kdl.dev/
 package kdl

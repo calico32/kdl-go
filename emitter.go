@@ -11,8 +11,18 @@ import (
 )
 
 // Emit writes the KDL representation of the given Document to the provided
-// writer. By default, the emitter uses an indent of four spaces and standard
-// float formatting. Options can be provided to customize the output.
+// writer.
+//
+// Emit produces canonical, minimal, deterministic output: properties are sorted
+// alphabetically, source layout (comments, blank lines, original
+// argument/property interleaving) is not preserved, and identical [Document]
+// values always produce identical bytes. Use Emit when you want stable output
+// for storage, transmission, hashing, or diffs. For human-readable
+// pretty-printing that preserves source layout, comments, and other
+// non-semantic details, use [Format] instead.
+//
+// By default, the emitter uses an indent of four spaces and standard float
+// formatting. Options can be provided to customize the output.
 //   - [WithVersion] to set the KDL version to emit (default: [Version2]).
 //   - [WithIndent] to set a custom indent string (default: four spaces).
 //   - [WithStringAlwaysQuote] to always quote strings (default: false).
@@ -325,7 +335,7 @@ func (e *emitter) emitValue(v Value) error {
 			}
 			return e.emit(fmt.Sprintf("0b%b", v.Int()))
 		default:
-			panic("kdl.Emit: invalid integer format")
+			panic("kdl.Emit: emitValue invalid integer format")
 		}
 	case BigInt:
 		if e.integerFormat == Decimal {
@@ -344,7 +354,7 @@ func (e *emitter) emitValue(v Value) error {
 			base = 2
 			prefix = "0b"
 		default:
-			panic("kdl.Emit: invalid integer format")
+			panic("kdl.Emit: emitValue invalid integer format")
 		}
 		s := prefix + v.BigInt().Text(base)
 		if v.BigInt().Sign() < 0 {

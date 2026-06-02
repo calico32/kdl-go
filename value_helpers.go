@@ -134,8 +134,16 @@ func NewValue[T intoValue](v T) Value {
 
 // TryNewValue attempts to wrap a raw value with its corresponding KDL value
 // type, returning an error if the value cannot be wrapped. It supports any type
-// that can be converted losslessly to a KDL value type, as well as any type
-// that implements [ValueMarshaler].
+// that implements [ValueMarshaler], as well as the following built-in types:
+//
+//   - string (wrapped as [String])
+//   - int, int8, int16, int32, int64 (wrapped as [Int] or [BigInt] kind depending on size)
+//   - uint, uint8, uint16, uint32, uint64 (wrapped as [Int] or [BigInt] kind depending on size)
+//   - float32, float64 (wrapped as [Float])
+//   - bool (wrapped as [Bool])
+//   - *big.Int, *big.Float (wrapped as [BigInt] and [BigFloat], respectively)
+//   - *Value (if the pointer is nil, it is treated as a KDL [Null]; otherwise,
+//     the pointed-to Value is used)
 func TryNewValue[T intoValue](v T) (Value, error) {
 	switch v := any(v).(type) {
 	case ValueMarshaler:

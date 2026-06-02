@@ -10,12 +10,21 @@ import (
 	"strings"
 )
 
-// Format writes a formatted KDL representation of d to w. Default style:
+// Format writes a pretty-printed KDL representation of d to w.
+//
+// Format preserves source layout — comments, blank lines, property order,
+// interleaving of arguments and properties, and string/numeric literals, among
+// others — and wraps long lines for readability. Use Format when writing files
+// humans will edit, when round-tripping a parsed document back to disk, or
+// wherever output fidelity to the original source matters more than minimal
+// byte output. For canonical, minimal, deterministic output (properties sorted,
+// no comments, no layout preservation), use [Emit] instead.
+//
+// Default style:
 //   - indentation with tabs
 //   - soft 100-char lines, escline wrapping
 //   - inline children when they fit
 //   - preserved blank lines (≤1)
-//   - no space around = in properties
 //   - property order preserved from source
 //   - space after /- for node comments, no space after /- for inline arg/prop/children comments
 //   - arguments and properties interleaved in source order
