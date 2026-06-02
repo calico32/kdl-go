@@ -96,7 +96,11 @@ type emitter struct {
 	emitEmptyChildren      bool
 }
 
-type emitterHints struct {
+// EmitterHints are hints that can be set on a per-node basis to control
+// emission of that node. They are consulted in addition to the global options
+// passed to [Emit] and can be used to override those options for specific
+// nodes.
+type EmitterHints struct {
 	// EmitEmptyChildren controls whether to emit an empty children block when
 	// the node has no children.
 	EmitEmptyChildren bool

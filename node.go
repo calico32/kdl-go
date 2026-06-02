@@ -43,7 +43,7 @@ type Node struct {
 	children Document
 
 	// hints controls the behavior of the emitter when serializing the node.
-	hints emitterHints
+	hints EmitterHints
 
 	// blankLineBefore is set by the parser when one or more blank lines precede
 	// this node in the source.
@@ -217,7 +217,7 @@ func (n *Node) setPropertyKeyLocation(key string, start, end Location) {
 }
 
 // Hints returns the emitter hints for the KDL node.
-func (n *Node) Hints() *emitterHints { return &n.hints }
+func (n *Node) Hints() *EmitterHints { return &n.hints }
 
 // HasBlankLineBefore reports whether a blank line preceded this node in the
 // parsed source.
