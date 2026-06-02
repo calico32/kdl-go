@@ -67,7 +67,7 @@ func (p *parser) readLineSpace() {
 	case tokenWS, tokenBackslash, tokenMultiLineCommentStart:
 		p.readNodeSpace()
 	default:
-		p.errorExpected("line space")
+		p.errorExpected(DiagSyntaxExpectedLineSpace, "line space")
 	}
 }
 
@@ -101,7 +101,7 @@ func (p *parser) readNodeSpace() bool {
 		p.skipWS()
 		return true
 	default:
-		p.errorExpected("node space")
+		p.errorExpected(DiagSyntaxExpectedNodeSpace, "node space")
 		return false
 	}
 }
@@ -118,7 +118,7 @@ func (p *parser) readEscline() {
 	case tokenEOF:
 		// OK, but don't consume
 	default:
-		p.errorExpected("end of line after escline")
+		p.errorExpected(DiagSyntaxExpectedEOLAfterEscline, "end of line after escline")
 	}
 }
 
@@ -139,7 +139,7 @@ func (p *parser) readMultiLineComment() {
 		p.next() // consume start/content/end
 	}
 	if x > 0 {
-		p.errorf(p.token.Pos, "unterminated multi-line comment")
+		p.errorf(p.token.Pos, DiagSyntaxUnterminatedComment, "unterminated multi-line comment")
 	}
 }
 
@@ -161,7 +161,7 @@ func (p *parser) readMultiLineCommentText() string {
 		p.next()
 	}
 	if depth > 0 {
-		p.errorf(p.token.Pos, "unterminated multi-line comment")
+		p.errorf(p.token.Pos, DiagSyntaxUnterminatedComment, "unterminated multi-line comment")
 	}
 	return sb.String()
 }

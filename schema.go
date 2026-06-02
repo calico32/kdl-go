@@ -1077,6 +1077,7 @@ func validateChildren(nodes []*Node, parent *Node, parentDef *SchemaNodeDef, def
 				diag := Diagnostic{
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("expected at least %d child%s, got %d", *def.Min, plural, count),
+					Code:     DiagSchemaNodeCountMin,
 				}
 				if parent != nil {
 					diag.Start = parent.Location()
@@ -1093,6 +1094,7 @@ func validateChildren(nodes []*Node, parent *Node, parentDef *SchemaNodeDef, def
 				diag := Diagnostic{
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("expected at most %d child%s, got %d", *def.Max, plural, count),
+					Code:     DiagSchemaNodeCountMax,
 				}
 				if parent != nil {
 					diag.Start = parent.Location()
@@ -1122,6 +1124,7 @@ func validateChildren(nodes []*Node, parent *Node, parentDef *SchemaNodeDef, def
 					End:      endLoc,
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("node %q requires at least %d occurrence(s), got %d", def.Name, *def.Min, count),
+					Code:     DiagSchemaNodeCountMin,
 				}
 				addRelated(&diag, def.Location, def.NameEnd, fmt.Sprintf("node %q min=%d defined here", def.Name, *def.Min))
 				diags = append(diags, diag)
@@ -1134,6 +1137,7 @@ func validateChildren(nodes []*Node, parent *Node, parentDef *SchemaNodeDef, def
 							End:      n.NameEndLocation(),
 							Severity: SeverityError,
 							Message:  fmt.Sprintf("node %q allows at most %d occurrence(s)", def.Name, *def.Max),
+							Code:     DiagSchemaNodeCountMax,
 						}
 						addRelated(&diag, def.Location, def.NameEnd, fmt.Sprintf("node %q max=%d defined here", def.Name, *def.Max))
 						diags = append(diags, diag)
@@ -1153,6 +1157,7 @@ func validateChildren(nodes []*Node, parent *Node, parentDef *SchemaNodeDef, def
 					End:      node.NameEndLocation(),
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("unexpected node %q", node.Name()),
+					Code:     DiagSchemaUnexpectedNode,
 				}
 				if parentDef != nil {
 					addRelated(&diag, parentDef.Location, parentDef.NameEnd, "allowed children defined here")
@@ -1233,6 +1238,7 @@ func validateNode(node *Node, def *SchemaNodeDef, schema *Schema) []Diagnostic {
 					End:      node.NameEndLocation(),
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("node %q missing required property %q", node.Name(), propDef.Key),
+					Code:     DiagSchemaMissingRequiredProperty,
 				}
 				addRelated(&diag, propDef.Location, propDef.NameEnd, fmt.Sprintf("required property %q defined here", propDef.Key))
 				diags = append(diags, diag)
@@ -1254,6 +1260,7 @@ func validateNode(node *Node, def *SchemaNodeDef, schema *Schema) []Diagnostic {
 					End:      end,
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("unexpected property %q on node %q", key, node.Name()),
+					Code:     DiagSchemaUnexpectedProperty,
 				}
 				addRelated(&diag, def.Location, def.NameEnd, fmt.Sprintf("node %q defined here", def.Name))
 				diags = append(diags, diag)
@@ -1274,6 +1281,7 @@ func validateNode(node *Node, def *SchemaNodeDef, schema *Schema) []Diagnostic {
 				End:      node.NameEndLocation(),
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("node %q requires at least %d value(s), got %d", node.Name(), *valDef.Min, len(args)),
+				Code:     DiagSchemaValueCountMin,
 			}
 			addRelated(&diag, valDef.Location, valDef.NameEnd, fmt.Sprintf("min=%d defined here", *valDef.Min))
 			diags = append(diags, diag)
@@ -1284,6 +1292,7 @@ func validateNode(node *Node, def *SchemaNodeDef, schema *Schema) []Diagnostic {
 				End:      node.NameEndLocation(),
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("node %q allows at most %d value(s), got %d", node.Name(), *valDef.Max, len(args)),
+				Code:     DiagSchemaValueCountMax,
 			}
 			addRelated(&diag, valDef.Location, valDef.NameEnd, fmt.Sprintf("max=%d defined here", *valDef.Max))
 			diags = append(diags, diag)
@@ -1333,6 +1342,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 				End:      endLoc,
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("expected type %s, got %s", strings.Join(validations.Types, " or "), kindName),
+				Code:     DiagSchemaTypeMismatch,
 			})
 		}
 	}
@@ -1352,6 +1362,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 				End:      endLoc,
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("value must be one of: %s", formatEnumValues(validations.Enum)),
+				Code:     DiagSchemaEnumMismatch,
 			})
 		}
 	}
@@ -1370,6 +1381,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 					End:      endLoc,
 					Severity: SeverityError,
 					Message:  fmt.Sprintf("value %q does not match pattern %q", s, pattern),
+					Code:     DiagSchemaPatternMismatch,
 				})
 			}
 		}
@@ -1384,6 +1396,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 				End:      endLoc,
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("string length %d is less than minimum %d", len(s), *validations.MinLength),
+				Code:     DiagSchemaLengthMin,
 			})
 		}
 		if validations.MaxLength != nil && len(s) > *validations.MaxLength {
@@ -1392,6 +1405,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 				End:      endLoc,
 				Severity: SeverityError,
 				Message:  fmt.Sprintf("string length %d exceeds maximum %d", len(s), *validations.MaxLength),
+				Code:     DiagSchemaLengthMax,
 			})
 		}
 	}
@@ -1405,6 +1419,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 					diags = append(diags, Diagnostic{
 						Start: loc, End: endLoc, Severity: SeverityError,
 						Message: fmt.Sprintf("value must be > %s", formatValue(*validations.Gt)),
+						Code:    DiagSchemaBoundGt,
 					})
 				}
 			}
@@ -1413,6 +1428,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 					diags = append(diags, Diagnostic{
 						Start: loc, End: endLoc, Severity: SeverityError,
 						Message: fmt.Sprintf("value must be >= %s", formatValue(*validations.Gte)),
+						Code:    DiagSchemaBoundGte,
 					})
 				}
 			}
@@ -1421,6 +1437,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 					diags = append(diags, Diagnostic{
 						Start: loc, End: endLoc, Severity: SeverityError,
 						Message: fmt.Sprintf("value must be < %s", formatValue(*validations.Lt)),
+						Code:    DiagSchemaBoundLt,
 					})
 				}
 			}
@@ -1429,6 +1446,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 					diags = append(diags, Diagnostic{
 						Start: loc, End: endLoc, Severity: SeverityError,
 						Message: fmt.Sprintf("value must be <= %s", formatValue(*validations.Lte)),
+						Code:    DiagSchemaBoundLte,
 					})
 				}
 			}
@@ -1438,6 +1456,7 @@ func validateValue(v Value, validations *SchemaValidations, loc, endLoc Location
 						diags = append(diags, Diagnostic{
 							Start: loc, End: endLoc, Severity: SeverityError,
 							Message: fmt.Sprintf("value must be a multiple of %s", formatValue(mod)),
+							Code:    DiagSchemaModulo,
 						})
 					}
 				}

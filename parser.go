@@ -157,6 +157,7 @@ func newParser(lex *lexer, trace io.Writer, options ...ParseOption) *parser {
 			End:      loc,
 			Severity: SeverityError,
 			Message:  "lex error: " + err.Error(),
+			Code:     DiagLexError,
 		})
 	})
 	for _, opt := range options {
@@ -180,23 +181,24 @@ type parser struct {
 	duplicateProps DupMode
 }
 
-func (p *parser) errorf(pos Pos, format string, args ...any) {
-	p.errorfRange(pos, p.token.EndPos, format, args...)
+func (p *parser) errorf(pos Pos, code, format string, args ...any) {
+	p.errorfRange(pos, p.token.EndPos, code, format, args...)
 }
 
-func (p *parser) errorfRange(startPos, endPos Pos, format string, args ...any) {
+func (p *parser) errorfRange(startPos, endPos Pos, code, format string, args ...any) {
 	p.diagnostics = append(p.diagnostics, Diagnostic{
 		Start:    p.lexer.File().Location(startPos),
 		End:      p.lexer.File().Location(endPos),
 		Severity: SeverityError,
 		Message:  fmt.Sprintf(format, args...),
+		Code:     code,
 	})
 	p.parserErrCount++
 }
 
-func (p *parser) errorExpected(expected string) {
+func (p *parser) errorExpected(code, expected string) {
 	tok := p.token
-	p.errorfRange(tok.Pos, tok.EndPos, "expected %s, got %s", expected, tok.Type)
+	p.errorfRange(tok.Pos, tok.EndPos, code, "expected %s, got %s", expected, tok.Type)
 }
 
 func (p *parser) next() {
@@ -211,7 +213,7 @@ func (p *parser) next() {
 func (p *parser) expect(tt tokenType) token {
 	tok := p.token
 	if tok.Type != tt {
-		p.errorfRange(tok.Pos, tok.EndPos, "expected token type %v, got %v", tt, tok.Type)
+		p.errorfRange(tok.Pos, tok.EndPos, DiagSyntaxUnexpectedToken, "expected token type %v, got %v", tt, tok.Type)
 	}
 	p.next()
 	return tok
@@ -352,7 +354,7 @@ func (p *parser) parseNodes() (nodes []*Node, trailing []Comment) {
 			case tokenEOF, tokenRBrace:
 				// nothing to consume — outer loop will exit
 			default:
-				p.errorExpected("node terminator")
+				p.errorExpected(DiagSyntaxExpectedNodeTerminator, "node terminator")
 				p.syncToNodeBoundary()
 			}
 			continue
@@ -394,7 +396,7 @@ func (p *parser) parseNodes() (nodes []*Node, trailing []Comment) {
 		default:
 			// leftover token after node (or after failed recovery). record
 			// error, sync to next boundary, then consume it to make progress
-			p.errorExpected("node terminator")
+			p.errorExpected(DiagSyntaxExpectedNodeTerminator, "node terminator")
 			p.syncToNodeBoundary()
 			wasNewline := p.token.Type == tokenNewline
 			if wasNewline || p.token.Type == tokenSemi {
@@ -536,7 +538,7 @@ func (p *parser) parseNode() (n *Node) {
 				p.next()
 			} else {
 				// missing closing brace — record error, store what we have, return
-				p.errorfRange(p.token.Pos, p.token.EndPos, "expected token type }, got %v", p.token.Type)
+				p.errorfRange(p.token.Pos, p.token.EndPos, DiagSyntaxExpectedRBrace, "expected token type }, got %v", p.token.Type)
 				if !slashdash {
 					childrenEncountered = true
 					n.children.Nodes = nodes
@@ -628,9 +630,10 @@ func (p *parser) parseNode() (n *Node) {
 								End:      p.lexer.File().Location(keyEnd),
 								Severity: SeverityWarning,
 								Message:  fmt.Sprintf("duplicate property %q shadows earlier occurrence", s),
+								Code:     DiagSyntaxDuplicateProperty,
 							})
 						case DupError:
-							p.errorfRange(keyStart, keyEnd, "duplicate property %q", s)
+							p.errorfRange(keyStart, keyEnd, DiagSyntaxDuplicateProperty, "duplicate property %q", s)
 						}
 					}
 				} else {
@@ -654,7 +657,7 @@ func (p *parser) parseNode() (n *Node) {
 				lastEndPos = keyEnd
 				if !slashdash {
 					if p.version == Version1 && typ == tokenUnambiguousIdent {
-						p.errorf(p.token.Pos, "unexpected identifier %s (must be quoted)", s)
+						p.errorf(p.token.Pos, DiagSyntaxV1UnquotedIdent, "unexpected identifier %s (must be quoted)", s)
 					}
 					arg := NewString(s)
 					if shouldPreserveStringLiteral(typ) {
@@ -691,7 +694,7 @@ func (p *parser) parseNode() (n *Node) {
 		default:
 			if p.token.Type == tokenEOF {
 				if slashdash {
-					p.errorfRange(p.token.Pos, p.token.EndPos, "expected value after slashdash")
+					p.errorfRange(p.token.Pos, p.token.EndPos, DiagSyntaxExpectedValueAfterSlashdash, "expected value after slashdash")
 					return n
 				}
 				return n
@@ -769,7 +772,7 @@ func (p *parser) parseString() string {
 		p.next()
 		return tok.Text
 	default:
-		p.errorExpected("string")
+		p.errorExpected(DiagSyntaxExpectedString, "string")
 		return ""
 	}
 }
@@ -811,7 +814,7 @@ func (p *parser) parseValue() Value {
 	case tokenUnambiguousIdent:
 		// only valid as a value in v2
 		if p.version == Version1 {
-			p.errorf(tok.Pos, "unexpected identifier (must be quoted)")
+			p.errorf(tok.Pos, DiagSyntaxV1UnquotedIdent, "unexpected identifier (must be quoted)")
 		}
 		fallthrough
 	case tokenSignedIdent, tokenDottedIdent,
@@ -846,7 +849,7 @@ func (p *parser) parseValue() Value {
 	case tokenDecimal, tokenHexadecimal, tokenOctal, tokenBinary:
 		value = p.parseNumber()
 	default:
-		p.errorExpected("value")
+		p.errorExpected(DiagSyntaxExpectedValue, "value")
 		return NewNull()
 	}
 
@@ -883,7 +886,7 @@ func (p *parser) parseNumber() Value {
 		base = 2
 		digits = digits[2:]
 	default:
-		p.errorExpected("number")
+		p.errorExpected(DiagSyntaxExpectedNumber, "number")
 		return NewNull()
 	}
 	p.next()
@@ -893,7 +896,7 @@ func (p *parser) parseNumber() Value {
 		var f big.Float
 		_, _, err := f.Parse(strings.ReplaceAll(digits, "_", ""), 10)
 		if err != nil {
-			p.errorf(p.token.Pos, "invalid float literal: %q", digits)
+			p.errorf(p.token.Pos, DiagSyntaxInvalidFloat, "invalid float literal: %q", digits)
 			return NewNull()
 		}
 		f64, prec := f.Float64()
@@ -909,7 +912,7 @@ func (p *parser) parseNumber() Value {
 	var i big.Int
 	_, ok := i.SetString(digits, base)
 	if !ok {
-		p.errorf(p.token.Pos, "invalid integer literal: %q", digits)
+		p.errorf(p.token.Pos, DiagSyntaxInvalidInteger, "invalid integer literal: %q", digits)
 		return NewNull()
 	}
 	if i.IsInt64() {
