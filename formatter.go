@@ -456,7 +456,12 @@ func (f *formatter) inlineChildren(nodes []*Node) (string, bool) {
 	for i, c := range nodes {
 		parts[i] = f.inlineNode(c)
 	}
-	return strings.Join(parts, "; "), true
+	inline := strings.Join(parts, "; ")
+	if f.version == Version1 {
+		// v1 needs trailing semicolon before closing } for inline children
+		inline += ";"
+	}
+	return inline, true
 }
 
 // inlineNode returns the inline (no indent, no newline) representation of n,
