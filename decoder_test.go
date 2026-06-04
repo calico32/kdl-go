@@ -463,3 +463,207 @@ func TestDecodeIntegerOverflow(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeNodeTargets(t *testing.T) {
+	type Foo struct {
+		Children []*kdl.Node `kdl:",children"`
+	}
+	type T struct {
+		Node        kdl.Node  `kdl:"node"`
+		NodePointer *kdl.Node `kdl:"node-ptr"`
+		Foo         Foo       `kdl:"foo"`
+	}
+
+	doc := `
+		node {
+			name Alice
+			age 30
+		}
+		node-ptr {
+			name Bob
+			age 25
+		}
+		foo {
+			child1
+			child2
+		}
+	`
+
+	var actual T
+	err := kdl.Decode(strings.NewReader(doc), &actual)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	if actual.Node.Name() != "node" {
+		t.Errorf("Expected Node to be populated, but got %v", actual.Node)
+	}
+
+	if actual.NodePointer == nil || actual.NodePointer.Name() != "node-ptr" {
+		t.Errorf("Expected NodePointer to be populated, but got %v", actual.NodePointer)
+	}
+
+	if len(actual.Foo.Children) != 2 || actual.Foo.Children[0].Name() != "child1" || actual.Foo.Children[1].Name() != "child2" {
+		t.Errorf("Expected Foo.Children to be populated, but got %v", actual.Foo.Children)
+	}
+
+	// roundtrip nodes to KDL to verify it was decoded correctly
+	var buf strings.Builder
+	err = kdl.Encode(actual, &buf)
+	if err != nil {
+		t.Errorf("Failed to emit node: %+v", err)
+		return
+	}
+
+	expected := `node {
+    name Alice
+    age 30
+}
+node-ptr {
+    name Bob
+    age 25
+}
+foo {
+    child1
+    child2
+}
+`
+
+	if buf.String() != expected {
+		t.Errorf("Node mismatch\nExpected:\n%s\nGot:\n%s", expected, buf.String())
+	}
+}
+
+func TestDecodeValueTargets(t *testing.T) {
+	type T struct {
+		Value        kdl.Value  `kdl:"value"`
+		ValuePointer *kdl.Value `kdl:"value-ptr"`
+	}
+
+	doc := `
+		value 42
+		value-ptr 42
+	`
+
+	var actual T
+	err := kdl.Decode(strings.NewReader(doc), &actual)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	if actual.Value.Kind() != kdl.Int {
+		t.Errorf("Expected Value to be of kind Int, but got %v", actual.Value.Kind())
+		return
+	}
+
+	if actual.Value.Int() != 42 {
+		t.Errorf("Expected Value to be 42, but got %v", actual.Value)
+		return
+	}
+
+	if actual.ValuePointer == nil {
+		t.Errorf("Expected ValuePointer to be set, but it was nil")
+		return
+	}
+
+	if actual.ValuePointer.Kind() != kdl.Int {
+		t.Errorf("Expected ValuePointer to be of kind Int, but got %v", actual.ValuePointer.Kind())
+		return
+	}
+
+	if actual.ValuePointer.Int() != 42 {
+		t.Errorf("Expected ValuePointer to be 42, but got %v", actual.ValuePointer)
+		return
+	}
+}
+
+func TestDecodeBadValueTargetType(t *testing.T) {
+	type Bar struct {
+		Name string
+	}
+	type Node struct {
+		Arg Bar `kdl:",arg"`
+	}
+	type T struct {
+		Node Node `kdl:"foo"`
+	}
+
+	doc := `
+		foo bar
+	`
+
+	var actual T
+	err := kdl.Decode(strings.NewReader(doc), &actual)
+	if err == nil {
+		t.Errorf("Expected error for unsupported target type, but got none")
+		return
+	}
+	t.Logf("Got expected error: %v", err)
+}
+
+func TestDecodeLocated(t *testing.T) {
+	type Foo struct {
+		Arg kdl.Located[string] `kdl:",arg"`
+	}
+
+	type T struct {
+		Name kdl.Located[string] `kdl:"name"`
+		Age  *kdl.Located[int]   `kdl:"age"`
+		Foo  Foo                 `kdl:"foo"`
+	}
+
+	// columns
+	//      12345678901 1234567 12345678
+	doc := "name Alice\nage 30\nfoo bar\n"
+	//      00000000001 1111111 11222222
+	//      01234567890 1234567 89012345
+	// offsets
+
+	var actual T
+	err := kdl.Decode(strings.NewReader(doc), &actual)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	expected := T{
+		Name: kdl.Located[string]{
+			Value: "Alice",
+			Start: kdl.Location{Filename: "<input>", Offset: 0, Line: 1, Column: 1},
+			End:   kdl.Location{Filename: "<input>", Offset: 10, Line: 1, Column: 11},
+		},
+		Age: &kdl.Located[int]{
+			Value: 30,
+			Start: kdl.Location{Filename: "<input>", Offset: 11, Line: 2, Column: 1},
+			End:   kdl.Location{Filename: "<input>", Offset: 17, Line: 2, Column: 7},
+		},
+		Foo: Foo{
+			Arg: kdl.Located[string]{
+				Value: "bar",
+				Start: kdl.Location{Filename: "<input>", Offset: 22, Line: 3, Column: 5},
+				End:   kdl.Location{Filename: "<input>", Offset: 25, Line: 3, Column: 8},
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(expected, actual) {
+		spew.Config.DisableMethods = true
+		t.Errorf("Value mismatch\nExpected:\n%s\nGot:\n%s", spew.Sdump(expected), spew.Sdump(actual))
+		spew.Config.DisableMethods = false
+	}
+
+	var buf strings.Builder
+	err = kdl.Encode(actual, &buf)
+	if err != nil {
+		t.Errorf("Failed to encode: %+v", err)
+		return
+	}
+
+	expectedDoc := "name Alice\nage 30\nfoo bar\n"
+
+	if buf.String() != expectedDoc {
+		t.Errorf("Document mismatch\nExpected:\n%s\nGot:\n%s", expectedDoc, buf.String())
+	}
+}

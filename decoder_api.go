@@ -195,3 +195,22 @@ func UnmarshalDocument(doc *Document, v any) error {
 func UnmarshalDocumentStrict(doc *Document, v any) error {
 	return unmarshalDocument(doc, v, true)
 }
+
+// Located[T] is a wrapper type that can be used to unmarshal a T along with its
+// source location. When unmarshaling into a Located[T], the decoder will
+// unmarshal the value into the Value field and set the Start and End fields to
+// the value's source range (either the Node or Value range, depending on the
+// context). Located[T] is transparent when marshaling.
+type Located[T any] struct {
+	Value      T
+	Start, End Location
+}
+
+// internal interface to detect Located[T] - cannot reflect type eq generics
+type locatedType interface {
+	locatedType()
+}
+
+var _ locatedType = Located[any]{}
+
+func (Located[T]) locatedType() {}

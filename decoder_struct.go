@@ -377,15 +377,15 @@ func (d *decoder) unmarshalPropertiesField(location Location, properties map[str
 	}
 }
 
-// unmarshalChildrenField unmarshals a slice of KDL nodes into a Go map
-// or struct. Behaves as expected for maps using node names as keys. For structs,
+// unmarshalChildrenField unmarshals a slice of KDL nodes into a Go map, struct,
+// or slice. Behaves as expected for maps using node names as keys. For structs,
 // matches node names to struct field names or tags, returning a strict mode
-// error if any node cannot be matched.
+// error if any node cannot be matched. For slices, unmarshals nodes in order.
 func (d *decoder) unmarshalChildrenField(children []*Node, tag structTag, target reflect.Value) error {
 	if target.Kind() == reflect.Pointer {
 		elem := target.Type().Elem()
-		if elem.Kind() != reflect.Map && elem.Kind() != reflect.Struct {
-			return errors.New("properties field must point to map or struct")
+		if elem.Kind() != reflect.Map && elem.Kind() != reflect.Struct && elem.Kind() != reflect.Slice {
+			return errors.New("children field must point to map, struct, or slice")
 		}
 		if target.IsNil() {
 			target.Set(reflect.New(elem))
@@ -417,8 +417,29 @@ func (d *decoder) unmarshalChildrenField(children []*Node, tag structTag, target
 	case reflect.Struct:
 		return d.unmarshalNodesIntoStructFields(children, target)
 
+	case reflect.Slice:
+		// only []Node or []*Node are supported for now - doesn't make sense
+		// to encode a []anything as children - each value would need a name,
+		// not clear how to handle for value marshalers, for example
+		if target.Type().Elem() != reflect.TypeFor[Node]() && target.Type().Elem() != reflect.TypeFor[*Node]() {
+			return fmt.Errorf("children field slice must be []kdl.Node or []*kdl.Node, got %s", target.Type())
+		}
+		slice := reflect.MakeSlice(target.Type(), len(children), len(children))
+		for i, child := range children {
+			elem := slice.Index(i)
+			if elem.Kind() == reflect.Pointer {
+				elem.Set(reflect.New(elem.Type().Elem()))
+				elem = elem.Elem()
+			}
+			if err := d.unmarshalNode(child, tag, elem); err != nil {
+				return err
+			}
+		}
+		target.Set(slice)
+		return nil
+
 	default:
-		return fmt.Errorf("properties field must be map or struct (got %s)", target.Type())
+		return fmt.Errorf("children field must be map, struct, or slice (got %s)", target.Type())
 	}
 }
 

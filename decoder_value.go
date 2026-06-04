@@ -53,9 +53,21 @@ func (d *decoder) unmarshalValue(value Value, tag structTag, target reflect.Valu
 		}
 	case reflect.Interface:
 		return d.unmarshalValueIntoInterface(value, target)
+	case reflect.Struct:
+		if _, ok := target.Interface().(locatedType); ok {
+			inner := target.FieldByName("Value")
+			start, end := value.Location(), value.EndLocation()
+			if err := d.unmarshalValue(value, tag, inner); err != nil {
+				return err
+			}
+			target.FieldByName("Start").Set(reflect.ValueOf(start))
+			target.FieldByName("End").Set(reflect.ValueOf(end))
+			return nil
+		}
+		// fallthrough to error - don't know how to unmarshal a struct directly
 	}
-
-	return nil
+	// don't know how to unmarshal into this type
+	return fmt.Errorf("cannot unmarshal KDL value into %s", target.Type())
 }
 
 // unmarshalString unmarshals a KDL value into a Go string, converting as needed

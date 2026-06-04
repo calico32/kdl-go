@@ -127,6 +127,17 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 		target = target.Elem()
 	}
 
+	if _, ok := target.Addr().Interface().(locatedType); ok {
+		inner := target.FieldByName("Value")
+		start, end := node.Location(), node.EndLocation()
+		if err := d.unmarshalNode(node, tag, inner); err != nil {
+			return err
+		}
+		target.FieldByName("Start").Set(reflect.ValueOf(start))
+		target.FieldByName("End").Set(reflect.ValueOf(end))
+		return nil
+	}
+
 	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[Unmarshaler]()) {
 		u := reflect.New(target.Type())
 		err := u.Interface().(Unmarshaler).UnmarshalKDL(node)
@@ -162,6 +173,20 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
 		return d.unmarshalDuration(node.args[0], tag, target)
+	}
+
+	// akin to json.RawMessage - preserve node/value for later processing
+	// instead of unmarshaling it now
+	if target.Type() == reflect.TypeFor[Node]() {
+		target.Set(reflect.ValueOf(*node))
+		return nil
+	}
+	if target.Type() == reflect.TypeFor[Value]() {
+		if len(node.args) != 1 {
+			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
+		}
+		target.Set(reflect.ValueOf(node.args[0]))
+		return nil
 	}
 
 	switch target.Kind() {

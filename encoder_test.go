@@ -239,6 +239,15 @@ var encoderTests = []struct {
 			custom-count 42
 		`,
 	},
+	{
+		"omitzero with Located",
+		struct {
+			Name kdl.Located[string] `kdl:"name,omitzero"`
+		}{
+			Name: kdl.Located[string]{Value: "", Start: kdl.Location{Line: 1, Column: 1}, End: kdl.Location{Line: 1, Column: 2}},
+		},
+		``,
+	},
 }
 
 func TestEncoder(t *testing.T) {

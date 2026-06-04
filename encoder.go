@@ -185,7 +185,7 @@ func (e *encoder) encodeStructFieldsAsNodes(target reflect.Value) error {
 				target.Type(), target.Type().Field(i).Name))
 		}
 
-		if tag.flags&omitzero != 0 && field.IsZero() {
+		if isOmitZero(tag.flags, field) {
 			continue
 		}
 
@@ -218,7 +218,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 				target.Type(), target.Type().Field(fieldIndex).Name))
 		}
 
-		if tag.flags&omitzero != 0 && field.IsZero() {
+		if isOmitZero(tag.flags, field) {
 			continue
 		}
 
@@ -235,7 +235,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 		if tag.flags&arguments != 0 {
 			for i := 0; i < field.Len(); i++ {
 				e.tracef("arguments: %s[%d] %s\n", tag.name, i, field.Index(i).Type())
-				if tag.flags&omitzero != 0 && field.Index(i).IsZero() {
+				if isOmitZero(tag.flags, field.Index(i)) {
 					continue
 				}
 				value, err := e.toValue(field.Index(i), tag.format)
@@ -263,7 +263,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 			case reflect.Map:
 				for _, key := range field.MapKeys() {
 					val := field.MapIndex(key)
-					if tag.flags&omitzero != 0 && val.IsZero() {
+					if isOmitZero(tag.flags, val) {
 						continue
 					}
 					value, err := e.toValue(val, tag.format)
@@ -299,6 +299,28 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 				err := e.encodeStructFieldsAsNodes(field)
 				if err != nil {
 					return err
+				}
+				e.popContext()
+				continue
+			case reflect.Slice:
+				e.pushContext(node.Children())
+				elemType := field.Type().Elem()
+				if elemType.Kind() == reflect.Pointer {
+					elemType = elemType.Elem()
+				}
+				if elemType != reflect.TypeFor[Node]() {
+					return fmt.Errorf("children slice field must be []kdl.Node or []*kdl.Node, got []%s", field.Type().Elem())
+				}
+				for i := 0; i < field.Len(); i++ {
+					child := field.Index(i)
+					if child.Kind() == reflect.Pointer {
+						child = child.Elem()
+					}
+					if isOmitZero(tag.flags, child) {
+						continue
+					}
+					n := child.Interface().(Node)
+					e.currentContext().AddNode(&n)
 				}
 				e.popContext()
 				continue
@@ -373,6 +395,17 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 			return err
 		}
 		target = target.Elem()
+	}
+
+	if target.Type() == reflect.TypeFor[Node]() {
+		node := target.Interface().(Node)
+		e.currentContext().AddNode(&node)
+		return nil
+	}
+
+	if _, ok := target.Interface().(locatedType); ok {
+		inner := target.FieldByName("Value")
+		return e.encodeValueAsNode(name, tag, inner)
 	}
 
 	if target.Type() == timeType || target.Type() == durationType {
@@ -452,7 +485,7 @@ func (e *encoder) encodeStructIntoProperties(node *Node, target reflect.Value) e
 				target.Type(), target.Type().Field(i).Name))
 		}
 
-		if tag.flags&omitzero != 0 && field.IsZero() {
+		if isOmitZero(tag.flags, field) {
 			continue
 		}
 
@@ -551,11 +584,36 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 // specified formatting for time or duration types. It returns an error if the
 // value cannot be converted to a KDL Value.
 func (e *encoder) toValue(target reflect.Value, format string) (Value, error) {
+	if target.Type() == reflect.TypeFor[Value]() {
+		return target.Interface().(Value), nil
+	}
+	if _, ok := target.Interface().(locatedType); ok {
+		inner := target.FieldByName("Value")
+		return e.toValue(inner, format)
+	}
 	switch target.Type() {
 	case timeType:
 		return formatTimeValue(target.Interface().(time.Time), format)
 	case durationType:
 		return formatDurationValue(target.Interface().(time.Duration), format)
 	}
-	return TryNewValue(target.Interface())
+	v, err := TryNewValue(target.Interface())
+	if err != nil {
+		return Value{}, fmt.Errorf("can't convert %s to KDL value: %w", target.Type(), err)
+	}
+	return v, nil
+}
+
+// isOmitZero checks if the given struct tag has the "omitzero" flag and if the
+// value is considered zero. For Located[T], the inner Value being zero also
+// counts as zero for the purposes of omitzero.
+func isOmitZero(flags tagFlags, value reflect.Value) bool {
+	if flags&omitzero == 0 {
+		return false
+	}
+	zero := value.IsZero()
+	if _, ok := value.Interface().(locatedType); ok {
+		zero = zero || value.FieldByName("Value").IsZero()
+	}
+	return zero
 }
