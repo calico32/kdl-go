@@ -828,7 +828,7 @@ func (p *parser) parseNode() (n *Node) {
 							arg.src = &valueSourceInfo{}
 						}
 						arg.src.location = p.lexer.File().Location(keyStart)
-						arg.src.location = p.lexer.File().Location(keyEnd)
+						arg.src.endLocation = p.lexer.File().Location(keyEnd)
 					}
 					n.args = append(n.args, arg)
 					n.entries = append(n.entries, nodeEntryArg)

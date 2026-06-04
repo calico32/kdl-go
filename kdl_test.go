@@ -203,6 +203,38 @@ func TestNodeEndLocation(t *testing.T) {
 	}
 }
 
+func TestValueEndLocation(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     string
+		wantEnd int // byte offset of EndLocation
+	}{
+		{"string", `node "val"` + "\n", len(`node "val"`)},
+		{"number", "node 42\n", len("node 42")},
+		{"bool", "node #true\n", len("node #true")},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			doc, err := kdl.Parse(strings.NewReader(tc.src))
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if len(doc.Nodes) == 0 {
+				t.Fatal("no nodes")
+			}
+			node := doc.Nodes[0]
+			if len(node.Arguments()) == 0 {
+				t.Fatal("no arguments")
+			}
+			value := node.Arg(0)
+			got := int(value.EndLocation().Offset)
+			if got != tc.wantEnd {
+				t.Errorf("EndLocation().Offset = %d, want %d (src: %q)", got, tc.wantEnd, tc.src)
+			}
+		})
+	}
+}
+
 // TestFormatRoundtrip asserts that for every parseable input in the v2
 // conformance suite, Parse -> Format -> Parse yields a document that is
 // canonically equivalent to the original.
