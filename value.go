@@ -9,8 +9,18 @@ import (
 type ValueKind uint8
 
 const (
+	// Invalid represents an invalid/zero Value. Most functions never return
+	// invalid Values (if the associated error is nil), but it may be produced
+	// by certain operations like accessing missing properties/out-of-bounds
+	// arguments (in these cases, the function's documentation will clearly
+	// state so). Most operations on an Invalid Value will panic or cause
+	// unpredictable behavior; check associated error return values or use
+	// [Value.IsValid] before working on a Value that may be invalid.
+	Invalid ValueKind = iota
+	// A Null is a KDL null value with an optional type annotation.
+	Null
 	// A String is a KDL string value with an optional type annotation.
-	String ValueKind = iota
+	String
 	// An Int is a KDL integer value with an optional type annotation. Integers
 	// that cannot be represented as a 64-bit integer will be represented as a
 	// [BigInt] instead.
@@ -28,18 +38,17 @@ const (
 	BigFloat
 	// A Bool is a KDL boolean value with an optional type annotation.
 	Bool
-	// A Null is a KDL null value with an optional type annotation.
-	Null
 )
 
 var valueKindNames = [...]string{
+	Invalid:  "<invalid>",
+	Null:     "Null",
 	String:   "String",
 	Int:      "Int",
 	Float:    "Float",
 	BigInt:   "BigInt",
 	BigFloat: "BigFloat",
 	Bool:     "Bool",
-	Null:     "Null",
 }
 
 func (k ValueKind) String() string {
@@ -72,12 +81,14 @@ type valueSourceInfo struct {
 	literal string
 }
 
-// IsValid reports whether this Value is valid. A Value is valid if it has a
-// kind of Null or a non-nil raw value, making zero Values (produced by certain
-// operations on Nodes, such as accessing a missing property with Get or
-// indexing out of bounds on the arguments) invalid. Invalid Values may cause
-// panics or other unexpected behavior if used.
-func (v Value) IsValid() bool                  { return v.kind == Null || v.raw != nil }
+// IsValid reports whether this Value is valid. Most functions never return
+// invalid Values (if the associated error is nil), but it may be produced by
+// certain operations like accessing missing properties/out-of-bounds arguments
+// (in these cases, the function's documentation will clearly state so). Most
+// operations on an invalid Value will panic or cause unpredictable behavior;
+// check associated error return values or call IsValid before working on a
+// Value that may be invalid.
+func (v Value) IsValid() bool                  { return v.kind != Invalid && (v.kind == Null || v.raw != nil) }
 func (v Value) TypeAnnotation() (string, bool) { return v.typ, v.typeValid }
 func (v Value) Kind() ValueKind                { return v.kind }
 func (v Value) RawValue() any                  { return v.raw }
