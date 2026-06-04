@@ -591,25 +591,25 @@ func (f *formatter) valueToString(v Value) string {
 	}
 	switch v.Kind() {
 	case String:
-		if lit, ok := v.StringLiteral(); ok {
+		if lit, ok := v.Literal(); ok {
 			b.WriteString(lit)
 		} else {
 			b.WriteString(f.stringToKDL(v.String()))
 		}
 	case Int:
-		if lit, ok := v.NumericLiteral(); ok {
+		if lit, ok := v.Literal(); ok {
 			b.WriteString(lit)
 		} else {
 			b.WriteString(strconv.FormatInt(int64(v.Int()), 10))
 		}
 	case BigInt:
-		if lit, ok := v.NumericLiteral(); ok {
+		if lit, ok := v.Literal(); ok {
 			b.WriteString(lit)
 		} else {
 			b.WriteString(v.BigInt().String())
 		}
 	case Float:
-		if lit, ok := v.NumericLiteral(); ok {
+		if lit, ok := v.Literal(); ok {
 			b.WriteString(lit)
 		} else if math.IsNaN(v.Float()) {
 			if f.version == Version1 {
@@ -621,7 +621,7 @@ func (f *formatter) valueToString(v Value) string {
 			b.WriteString(f.floatToString(new(big.Float).SetFloat64(v.Float())))
 		}
 	case BigFloat:
-		if lit, ok := v.NumericLiteral(); ok {
+		if lit, ok := v.Literal(); ok {
 			b.WriteString(lit)
 		} else {
 			b.WriteString(f.floatToString(v.BigFloat()))

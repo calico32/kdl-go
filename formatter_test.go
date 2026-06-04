@@ -364,7 +364,7 @@ func TestFormatWithNumericLiteralManual(t *testing.T) {
 	// WithNumericLiteral lets callers opt into exact representation for
 	// programmatic values too
 	doc := &Document{Nodes: []*Node{
-		NewNode("node").AddArgument(NewInt(255).WithNumericLiteral("0xFF")),
+		NewNode("node").AddArgument(NewInt(255).WithLiteral("0xFF")),
 	}}
 	if got := mustFormat(t, doc); got != "node 0xFF\n" {
 		t.Errorf("got %q", got)

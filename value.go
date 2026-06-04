@@ -6,7 +6,7 @@ import (
 	"math/big"
 )
 
-type ValueKind int
+type ValueKind uint8
 
 const (
 	// A String is a KDL string value with an optional type annotation.
@@ -54,42 +54,61 @@ func (k ValueKind) String() string {
 // may also have an optional type annotation, which can be used to provide
 // additional context about the value's type.
 type Value struct {
-	typ            string
-	typeValid      bool
-	kind           ValueKind
+	typ       string
+	typeValid bool
+	kind      ValueKind
+	raw       any
+	src       *valueSourceInfo
+}
+
+type valueSourceInfo struct {
 	location       Location
 	endLocation    Location
 	typeAnnotStart Location
 	typeAnnotEnd   Location
-	raw            any
-	// numericLiteral holds the exact source text for parsed numeric literals
-	// (integers, floats in any base/format). Empty for programmatically created
-	// values.
-	numericLiteral string
-	// stringLiteral holds the exact source text for parsed string values
+	// literal holds the exact source text for parsed string values
 	// (quoted, raw, or multi-line, including delimiters). Empty for
 	// programmatically created values.
-	stringLiteral string
+	literal string
 }
 
+// IsValid reports whether this Value is valid. A Value is valid if it has a
+// kind of Null or a non-nil raw value, making zero Values (produced by certain
+// operations on Nodes, such as accessing a missing property with Get or
+// indexing out of bounds on the arguments) invalid. Invalid Values may cause
+// panics or other unexpected behavior if used.
+func (v Value) IsValid() bool                  { return v.kind == Null || v.raw != nil }
 func (v Value) TypeAnnotation() (string, bool) { return v.typ, v.typeValid }
 func (v Value) Kind() ValueKind                { return v.kind }
 func (v Value) RawValue() any                  { return v.raw }
-func (v Value) Location() Location             { return v.location }
+
+// Location returns the source location of the value token, not including any
+// type annotation. Returns a zero Location when location tracking is off.
+func (v Value) Location() Location {
+	if v.src != nil {
+		return v.src.location
+	}
+	return Location{}
+}
 
 // EndLocation returns the location of the end (exclusive) of the value token,
 // not including any type annotation. Returns a zero Location when location
 // tracking is off.
-func (v Value) EndLocation() Location { return v.endLocation }
+func (v Value) EndLocation() Location {
+	if v.src != nil {
+		return v.src.endLocation
+	}
+	return Location{}
+}
 
 // TypeAnnotationRange returns the source range of the type annotation content
 // (the identifier inside the parentheses, not the parens themselves). ok is
 // false when no type annotation is present or location tracking is off.
 func (v Value) TypeAnnotationRange() (start, end Location, ok bool) {
-	if !v.typeValid || v.typeAnnotStart.Line == 0 {
+	if !v.typeValid || v.src == nil || v.src.typeAnnotStart.Line == 0 {
 		return
 	}
-	return v.typeAnnotStart, v.typeAnnotEnd, true
+	return v.src.typeAnnotStart, v.src.typeAnnotEnd, true
 }
 
 func (v Value) WithTypeAnnotation(ty string, valid bool) Value {
@@ -98,55 +117,30 @@ func (v Value) WithTypeAnnotation(ty string, valid bool) Value {
 	return v
 }
 
-func (v Value) WithLocation(loc Location) Value {
-	v.location = loc
-	return v
-}
-
-func (v Value) WithEndLocation(loc Location) Value {
-	v.endLocation = loc
-	return v
-}
-
-func (v Value) WithTypeAnnotationRange(start, end Location) Value {
-	v.typeAnnotStart = start
-	v.typeAnnotEnd = end
-	return v
-}
-
-// NumericLiteral returns the original source text of the numeric literal, if
-// this value was produced by parsing source code. Returns ("", false) for
-// programmatically created values.
-func (v Value) NumericLiteral() (string, bool) {
-	if v.numericLiteral == "" {
+// Literal returns the original source text of the string/numeric literal, if
+// this value was produced by parsing a KDL document and the literal text
+// contained meaningful syntax that should be preserved when round-tripping
+// (e.g. raw/multiline strings or different integer formats). It returns ("",
+// false) if no such literal is available or applicable for this value.
+func (v Value) Literal() (string, bool) {
+	if v.src == nil || v.src.literal == "" {
 		return "", false
 	}
-	return v.numericLiteral, true
+	return v.src.literal, true
 }
 
-// WithNumericLiteral stores the original source text of a numeric literal.
-// This is called by the parser; it can also be used when constructing Values
-// that should round-trip to a specific textual form.
-func (v Value) WithNumericLiteral(s string) Value {
-	v.numericLiteral = s
-	return v
-}
-
-// StringLiteral returns the original source text of the string value
-// (including its delimiters), if this value was produced by parsing source
-// code. Returns ("", false) for programmatically created values.
-func (v Value) StringLiteral() (string, bool) {
-	if v.stringLiteral == "" {
-		return "", false
+// WithLiteral returns a new Value with the original source text of a
+// string/numeric literal that this Value should round-trip to when formatting.
+// For non-string and non-numeric values, the literal is ignored and does
+// nothing.
+func (v Value) WithLiteral(s string) Value {
+	// copy (or alloc) src info
+	var src valueSourceInfo
+	if v.src != nil {
+		src = *v.src
 	}
-	return v.stringLiteral, true
-}
-
-// WithStringLiteral stores the original source text of a string value.
-// This is called by the parser; it can also be used when constructing Values
-// that should round-trip to a specific textual form.
-func (v Value) WithStringLiteral(s string) Value {
-	v.stringLiteral = s
+	src.literal = s
+	v.src = &src
 	return v
 }
 

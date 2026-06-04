@@ -766,7 +766,7 @@ func (p *parser) parseNode() (n *Node) {
 					p.syncToNodeBoundary()
 					return n
 				}
-				lastEndPos = val.endLocation.Offset
+				lastEndPos = val.EndLocation().Offset
 				if !slashdash {
 					isDup := slices.Contains(n.propOrder, s)
 					n.AddProperty(s, val)
@@ -818,22 +818,34 @@ func (p *parser) parseNode() (n *Node) {
 					}
 					arg := NewString(s)
 					if shouldPreserveStringLiteral(typ) {
-						arg.stringLiteral = p.lexer.text(keyStart, keyEnd)
+						if arg.src == nil {
+							arg.src = &valueSourceInfo{}
+						}
+						arg.src.literal = p.lexer.text(keyStart, keyEnd)
 					}
 					if p.withLocations {
-						arg = arg.WithLocation(p.lexer.File().Location(keyStart))
-						arg = arg.WithEndLocation(p.lexer.File().Location(keyEnd))
+						if arg.src == nil {
+							arg.src = &valueSourceInfo{}
+						}
+						arg.src.location = p.lexer.File().Location(keyStart)
+						arg.src.location = p.lexer.File().Location(keyEnd)
 					}
 					n.args = append(n.args, arg)
 					n.entries = append(n.entries, nodeEntryArg)
 				} else {
 					arg := NewString(s)
 					if shouldPreserveStringLiteral(typ) {
-						arg.stringLiteral = p.lexer.text(keyStart, keyEnd)
+						if arg.src == nil {
+							arg.src = &valueSourceInfo{}
+						}
+						arg.src.literal = p.lexer.text(keyStart, keyEnd)
 					}
 					if p.withLocations {
-						arg = arg.WithLocation(p.lexer.File().Location(keyStart))
-						arg = arg.WithEndLocation(p.lexer.File().Location(keyEnd))
+						if arg.src == nil {
+							arg.src = &valueSourceInfo{}
+						}
+						arg.src.location = p.lexer.File().Location(keyStart)
+						arg.src.endLocation = p.lexer.File().Location(keyEnd)
 					}
 					sd := InlineSlashdash{
 						kind:          InlineSlashdashArg,
@@ -862,7 +874,7 @@ func (p *parser) parseNode() (n *Node) {
 				p.syncToNodeBoundary()
 				return n
 			}
-			lastEndPos = val.endLocation.Offset
+			lastEndPos = val.EndLocation().Offset
 			if !slashdash {
 				n.args = append(n.args, val)
 				n.entries = append(n.entries, nodeEntryArg)
@@ -980,7 +992,10 @@ func (p *parser) parseValue() Value {
 		str := p.parseString()
 		value = NewString(str)
 		if shouldPreserveStringLiteral(tok.Type) {
-			value.stringLiteral = p.lexer.text(tok.Pos, tok.EndPos)
+			if value.src == nil {
+				value.src = &valueSourceInfo{}
+			}
+			value.src.literal = p.lexer.text(tok.Pos, tok.EndPos)
 		}
 	case tokenTrue:
 		p.next()
@@ -994,15 +1009,24 @@ func (p *parser) parseValue() Value {
 	case tokenInf:
 		p.next()
 		value = infValue
-		value.numericLiteral = tok.Text
+		if value.src == nil {
+			value.src = &valueSourceInfo{}
+		}
+		value.src.literal = tok.Text
 	case tokenNegInf:
 		p.next()
 		value = negInfValue
-		value.numericLiteral = tok.Text
+		if value.src == nil {
+			value.src = &valueSourceInfo{}
+		}
+		value.src.literal = tok.Text
 	case tokenNaN:
 		p.next()
 		value = nanValue
-		value.numericLiteral = tok.Text
+		if value.src == nil {
+			value.src = &valueSourceInfo{}
+		}
+		value.src.literal = tok.Text
 	case tokenDecimal, tokenHexadecimal, tokenOctal, tokenBinary:
 		value = p.parseNumber()
 	default:
@@ -1012,13 +1036,14 @@ func (p *parser) parseValue() Value {
 
 	value = value.WithTypeAnnotation(typeAnnot, typeAnnotPresent)
 	if p.withLocations {
-		value = value.WithLocation(p.lexer.File().Location(pos))
-		value = value.WithEndLocation(p.lexer.File().Location(tok.EndPos))
+		if value.src == nil {
+			value.src = &valueSourceInfo{}
+		}
+		value.src.location = p.lexer.File().Location(pos)
+		value.src.endLocation = p.lexer.File().Location(tok.EndPos)
 		if typeAnnotPresent {
-			value = value.WithTypeAnnotationRange(
-				p.lexer.File().Location(typeAnnotContentStart),
-				p.lexer.File().Location(typeAnnotContentEnd),
-			)
+			value.src.typeAnnotStart = p.lexer.File().Location(typeAnnotContentStart)
+			value.src.typeAnnotEnd = p.lexer.File().Location(typeAnnotContentEnd)
 		}
 	}
 	return value
@@ -1058,9 +1083,9 @@ func (p *parser) parseNumber() Value {
 		}
 		f64, prec := f.Float64()
 		if prec == big.Exact {
-			return NewFloat(f64).WithNumericLiteral(literal)
+			return NewFloat(f64).WithLiteral(literal)
 		} else {
-			return NewBigFloat(&f).WithNumericLiteral(literal)
+			return NewBigFloat(&f).WithLiteral(literal)
 		}
 	}
 
@@ -1073,8 +1098,8 @@ func (p *parser) parseNumber() Value {
 		return NewNull()
 	}
 	if i.IsInt64() {
-		return NewInt(int(i.Int64())).WithNumericLiteral(literal)
+		return NewInt(int(i.Int64())).WithLiteral(literal)
 	} else {
-		return NewBigInt(&i).WithNumericLiteral(literal)
+		return NewBigInt(&i).WithLiteral(literal)
 	}
 }
