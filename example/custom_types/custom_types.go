@@ -54,17 +54,17 @@ func (j *Job) UnmarshalKDL(node *kdl.Node) error {
 	}
 	j.Name = args[0].String()
 
-	if cmd, _ := kdl.Get(node, "command"); cmd != nil {
+	if cmd := node.Prop("command"); cmd.IsValid() {
 		j.Command = cmd.String()
 	}
-	if iv, _ := kdl.Get(node, "interval"); iv != nil {
+	if iv := node.Prop("interval"); iv.IsValid() {
 		d, err := time.ParseDuration(iv.String())
 		if err != nil {
 			return err
 		}
 		j.Interval = Duration(d)
 	}
-	if r, _ := kdl.Get(node, "retries"); r != nil {
+	if r := node.Prop("retries"); r.IsValid() {
 		j.Retries = r.Int()
 	}
 	return nil

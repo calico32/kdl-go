@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"slices"
 )
 
 type keyType interface{ ~string | ~int }
@@ -12,26 +11,32 @@ type keyType interface{ ~string | ~int }
 // Get gets an argument or property from a KDL node, depending on the type of
 // the key (integer index for arguments, string for properties).
 //
-// If the key is missing, the resulting value and error will both be nil.
+// If the key is missing, Get returns nil.
 //
 // Get panics if node is nil, or if K resolves to a type other than ~string or
 // ~int at runtime.
-func Get[K keyType](node *Node, key K) (*Value, error) {
+//
+// Deprecated: use [Node.Arg] and [Node.Prop] instead, which provide more
+// explicit APIs for accessing arguments and properties, respectively, and avoid
+// the need for runtime type checks on the key.
+func Get[K keyType](node *Node, key K) *Value {
 	if node == nil {
 		panic("kdl.Get: nil node")
 	}
 
 	switch key := any(key).(type) {
 	case string:
-		if val, ok := node.props[key]; ok {
-			return &val, nil
+		v := node.Prop(key)
+		if !v.IsValid() {
+			return nil
 		}
-		return nil, nil
+		return &v
 	case int:
-		if key < len(node.args) {
-			return &node.args[key], nil
+		v := node.Arg(key)
+		if !v.IsValid() {
+			return nil
 		}
-		return nil, nil
+		return &v
 	default:
 		panic(fmt.Sprintf("kdl.Get: unsupported key type %T", key))
 	}
@@ -40,14 +45,18 @@ func Get[K keyType](node *Node, key K) (*Value, error) {
 // Set sets an argument or property on a KDL node, depending on the type of the
 // key (integer index for arguments, string for properties).
 //
-// When setting an argument, if the index is greater than the current
-// number of arguments, the Arguments slice will be extended to accommodate the
-// new index, filling in any missing indices with KDL nulls.
-// When setting a property, if the property does not already exist, it will be
-// added to the PropertyOrder slice to maintain the order of properties.
+// When setting an argument, if the index is greater than the current number of
+// arguments, the Arguments slice will be extended to accommodate the new index,
+// filling in any missing indices with KDL nulls. When setting a property, if
+// the property does not already exist, it will be added to the PropertyOrder
+// slice to maintain the order of properties.
 //
 // Set panics if node is nil, if a negative integer index is supplied, or if K
 // resolves to a type other than ~string or ~int at runtime.
+//
+// Deprecated: use [Node.SetArg] and [Node.SetProp] instead, which provide more
+// explicit APIs for setting arguments and properties, respectively, and avoid
+// the need for runtime type checks on the key.
 func Set[K keyType](node *Node, key K, value Value) {
 	if node == nil {
 		panic("kdl.Set: nil node")
@@ -55,59 +64,34 @@ func Set[K keyType](node *Node, key K, value Value) {
 
 	switch key := any(key).(type) {
 	case string:
-		if slices.Contains(node.propOrder, key) {
-			// update the last existing occurrence (last-wins) without
-			// creating a new propEntry; preserves any earlier duplicate
-			// occurrences from the source.
-			for i := len(node.propEntries) - 1; i >= 0; i-- {
-				if node.propEntries[i].key == key {
-					node.propEntries[i].value = value
-					break
-				}
-			}
-		} else {
-			node.propOrder = append(node.propOrder, key)
-			node.propEntries = append(node.propEntries, propEntry{key: key, value: value})
-			node.entries = append(node.entries, nodeEntryProp)
-		}
-		node.props[key] = value
+		node.SetProp(key, value)
 	case int:
-		if key < 0 {
-			panic(fmt.Sprintf("kdl.Set: negative argument index %d", key))
-		}
-		if key >= len(node.args) {
-			// Extend the Arguments slice to accommodate the new index
-			for i := len(node.args); i <= key; i++ {
-				node.args = append(node.args, NewNull())
-				node.entries = append(node.entries, nodeEntryArg)
-			}
-		}
-		node.args[key] = value
+		node.SetArg(key, value)
 	default:
 		panic(fmt.Sprintf("kdl.Set: unsupported key type %T", key))
 	}
 }
 
-// GetKV gets the first child with the given name from the KDL document and returns
-// its first argument.
+// GetKV gets the first child with the given name from the KDL document and
+// returns its first argument.
 //
 // If no such child exists, (nil, nil) is returned. If the child does not have
 // exactly one argument, an error is returned. GetKV panics if document is nil.
+//
+// Deprecated: use [Document.GetKV] instead.
 func GetKV(document *Document, name string) (*Value, error) {
 	if document == nil {
 		panic("kdl.GetKV: nil document")
 	}
 
-	for _, child := range document.Nodes {
-		if child.name == name {
-			if len(child.args) != 1 {
-				return nil, fmt.Errorf("child %s does not have exactly one argument", name)
-			}
-			return &child.args[0], nil
-		}
+	v, err := document.GetKV(name)
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, nil
+	if !v.IsValid() {
+		return nil, nil
+	}
+	return &v, nil
 }
 
 type intoValue interface {

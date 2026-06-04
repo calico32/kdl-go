@@ -1,6 +1,7 @@
 package kdl
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 )
@@ -100,6 +101,59 @@ func (n *Node) Arguments() []Value { return n.args }
 
 // Properties returns the properties of the KDL node.
 func (n *Node) Properties() map[string]Value { return n.props }
+
+// Arg returns the argument at the given index. It returns the zero Value if the
+// index is out of range.
+func (n *Node) Arg(index int) Value {
+	if index < 0 || index >= len(n.args) {
+		return Value{}
+	}
+	return n.args[index]
+}
+
+// Prop returns the property with the given key. It returns the zero Value if
+// the property does not exist.
+func (n *Node) Prop(key string) Value {
+	if val, ok := n.props[key]; ok {
+		return val
+	}
+	return Value{}
+}
+
+func (n *Node) SetArg(index int, value Value) {
+	if index < 0 {
+		panic(fmt.Sprintf("kdl.Set: negative argument index %d", index))
+	}
+	if index >= len(n.args) {
+		// extend the args slice to accommodate the new index
+		for i := len(n.args); i <= index; i++ {
+			n.args = append(n.args, NewNull())
+			n.entries = append(n.entries, nodeEntryArg)
+		}
+	}
+	n.args[index] = value
+}
+
+// SetProp sets the property with the given key to the given value. If the
+// property does not exist, it is added to the node.
+func (n *Node) SetProp(key string, value Value) {
+	if slices.Contains(n.propOrder, key) {
+		// update the last existing occurrence (last-wins) without creating a
+		// new propEntry; preserves any earlier duplicate occurrences from the
+		// source.
+		for i := len(n.propEntries) - 1; i >= 0; i-- {
+			if n.propEntries[i].key == key {
+				n.propEntries[i].value = value
+				break
+			}
+		}
+	} else {
+		n.propOrder = append(n.propOrder, key)
+		n.propEntries = append(n.propEntries, propEntry{key: key, value: value})
+		n.entries = append(n.entries, nodeEntryProp)
+	}
+	n.props[key] = value
+}
 
 // PropertyOrder returns the order of properties in the KDL node. Duplicate
 // keys appear once, at the position of their first occurrence.

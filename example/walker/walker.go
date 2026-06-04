@@ -47,11 +47,11 @@ func main() {
 	kdl.Walk(doc, func(node *kdl.Node, depth int) bool {
 		if node.Name() == "dep" {
 			args := node.Arguments()
-			ver, _ := kdl.Get(node, "version")
-			optional, _ := kdl.Get(node, "optional")
+			ver := node.Prop("version")
+			optional := node.Prop("optional")
 
 			opt := ""
-			if optional != nil && optional.Bool() {
+			if optional.IsValid() && optional.Bool() {
 				opt = " (optional)"
 			}
 			fmt.Printf("  %s @ %s%s\n", args[0].String(), ver.String(), opt)

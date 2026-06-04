@@ -1,5 +1,7 @@
 package kdl
 
+import "fmt"
+
 // A Document is a collection of nodes.
 type Document struct {
 	Nodes []*Node
@@ -51,4 +53,22 @@ func (d *Document) GetNodes(name string) []*Node {
 		}
 	}
 	return children
+}
+
+// GetKV gets the first node with the given name from the KDL document and
+// returns its first argument.
+//
+// If no such node exists, GetKV returns a zero Value and a nil error. If the
+// node does not have exactly one argument, a non-nil error is returned.
+func (d *Document) GetKV(name string) (Value, error) {
+	for _, child := range d.Nodes {
+		if child.name == name {
+			if len(child.args) != 1 {
+				return Value{}, fmt.Errorf("node %s does not have exactly one argument", name)
+			}
+			return child.Arg(0), nil
+		}
+	}
+
+	return Value{}, nil
 }
