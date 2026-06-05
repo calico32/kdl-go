@@ -536,14 +536,21 @@ foo {
 }
 
 func TestDecodeValueTargets(t *testing.T) {
+	type Foo struct {
+		Arg   kdl.Value `kdl:",arg"`
+		Prop  kdl.Value `kdl:"prop,prop"`
+		Child kdl.Value `kdl:"child,child"`
+	}
 	type T struct {
 		Value        kdl.Value  `kdl:"value"`
 		ValuePointer *kdl.Value `kdl:"value-ptr"`
+		Foo          Foo        `kdl:"foo"`
 	}
 
 	doc := `
 		value 42
 		value-ptr 42
+		foo 42 prop=42 { child 42 }
 	`
 
 	var actual T
@@ -575,6 +582,36 @@ func TestDecodeValueTargets(t *testing.T) {
 
 	if actual.ValuePointer.Int() != 42 {
 		t.Errorf("Expected ValuePointer to be 42, but got %v", actual.ValuePointer)
+		return
+	}
+
+	if actual.Foo.Arg.Kind() != kdl.Int {
+		t.Errorf("Expected Foo.Arg to be of kind Int, but got %v", actual.Foo.Arg.Kind())
+		return
+	}
+
+	if actual.Foo.Arg.Int() != 42 {
+		t.Errorf("Expected Foo.Arg to be 42, but got %v", actual.Foo.Arg)
+		return
+	}
+
+	if actual.Foo.Prop.Kind() != kdl.Int {
+		t.Errorf("Expected Foo.Prop to be of kind Int, but got %v", actual.Foo.Prop.Kind())
+		return
+	}
+
+	if actual.Foo.Prop.Int() != 42 {
+		t.Errorf("Expected Foo.Prop to be 42, but got %v", actual.Foo.Prop)
+		return
+	}
+
+	if actual.Foo.Child.Kind() != kdl.Int {
+		t.Errorf("Expected Foo.Child to be of kind Int, but got %v", actual.Foo.Child.Kind())
+		return
+	}
+
+	if actual.Foo.Child.Int() != 42 {
+		t.Errorf("Expected Foo.Child to be 42, but got %v", actual.Foo.Child)
 		return
 	}
 }

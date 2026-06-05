@@ -21,6 +21,9 @@ func (d *decoder) unmarshalValue(value Value, tag structTag, target reflect.Valu
 	}
 
 	switch target.Type() {
+	case reflect.TypeFor[Value]():
+		target.Set(reflect.ValueOf(value))
+		return nil
 	case timeType:
 		return d.unmarshalTime(value, tag, target)
 	case durationType:
