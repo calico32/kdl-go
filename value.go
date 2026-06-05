@@ -41,7 +41,7 @@ const (
 )
 
 var valueKindNames = [...]string{
-	Invalid:  "<invalid>",
+	Invalid:  "Invalid",
 	Null:     "Null",
 	String:   "String",
 	Int:      "Int",
@@ -211,6 +211,37 @@ func (v Value) Bool() bool {
 		panic("kdl.Value: Bool called on non-bool Value")
 	}
 	return v.raw.(bool)
+}
+
+// Equal returns whether this Value is equal to another Value, comparing only
+// the kind, raw value, and type annotation (if present) for equality (using ==,
+// or .Cmp for big.Int/big.Float). It does not consider source location or
+// literal information. Invalid Values are also considered equal to each other,
+// but not equal to any valid Value.
+func (v Value) Equal(other Value) bool {
+	if v.kind != other.kind {
+		return false
+	}
+	if v.typeValid != other.typeValid {
+		return false
+	}
+	if v.typeValid && v.typ != other.typ {
+		return false
+	}
+	switch v.kind {
+	case Invalid:
+		return true
+	case Null:
+		return true
+	case String, Int, Float, Bool:
+		return v.raw == other.raw
+	case BigInt:
+		return v.raw.(*big.Int).Cmp(other.raw.(*big.Int)) == 0
+	case BigFloat:
+		return v.raw.(*big.Float).Cmp(other.raw.(*big.Float)) == 0
+	default:
+		panic(fmt.Sprintf("kdl.Value: invalid ValueKind in Equal: %s", v.kind))
+	}
 }
 
 // NewString creates a new KDL string Value.
