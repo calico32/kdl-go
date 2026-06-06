@@ -125,20 +125,24 @@ func (d *decoder) unmarshalNodeIntoStruct(node *Node, target reflect.Value) erro
 
 	for argumentNum, fieldIndex := range ctx.argFields {
 		field := target.Field(fieldIndex)
-		if argumentNum >= len(node.args) && (d.strict || ctx.isFieldStrict(fieldIndex)) {
-			return fmt.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.loc, argumentNum+1, node.name, target.Type())
-		}
-		if err := d.unmarshalValue(node.args[argumentNum], ctx.tags[fieldIndex], field); err != nil {
+		if argumentNum >= len(node.args) {
+			if d.strict || ctx.isFieldStrict(fieldIndex) {
+				return fmt.Errorf("%s: expected at least %d arguments (unmarshaling node %q into struct %s)", node.loc, argumentNum+1, node.name, target.Type())
+			}
+			// otherwise, leave zero value and continue
+		} else if err := d.unmarshalValue(node.args[argumentNum], ctx.tags[fieldIndex], field); err != nil {
 			return err
 		}
 		ctx.markFieldUsed(fieldIndex)
 	}
 
-	if len(node.args) > len(ctx.argFields) && ctx.argsField == -1 && d.strict {
+	hasExtraArgs := len(node.args) > len(ctx.argFields)
+
+	if hasExtraArgs && ctx.argsField == -1 && d.strict {
 		return fmt.Errorf("%w: too many arguments (%d provided, %d expected)", ErrStrict, len(node.args), len(ctx.argFields))
 	}
 
-	if ctx.argsField != -1 {
+	if hasExtraArgs && ctx.argsField != -1 {
 		field := target.Field(ctx.argsField)
 		unusedArguments := node.args[len(ctx.argFields):]
 		if err := d.unmarshalValues(unusedArguments, ctx.tags[ctx.argsField], field); err != nil {
