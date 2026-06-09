@@ -15,17 +15,11 @@ import (
 // For more detailed error reporting and diagnostics, use [ParseWithDiagnostics]
 // instead.
 func Parse(r io.Reader, opts ...ParseOption) (*Document, error) {
-	return ParseNamed("<input>", r, opts...)
-}
-
-// ParseNamed is like [Parse], but allows specifying a name for the input
-// source. Nodes and errors will reference this name in their locations.
-func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error) {
 	src, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}
-	result := parseWithDiagnosticsFromBytes(name, src, opts...)
+	result := parseWithDiagnosticsFromBytes(src, opts...)
 	if result.HasErrors() {
 		for _, d := range result.Diagnostics {
 			if d.Severity == SeverityError {
@@ -34,6 +28,14 @@ func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error
 		}
 	}
 	return result.Document, nil
+}
+
+// ParseNamed is like [Parse], but allows specifying a name for the input
+// source. Nodes and errors will reference this name in their locations.
+//
+// Deprecated: Use [Parse] with the [WithSourceName] option instead.
+func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error) {
+	return Parse(r, append(slices.Clone(opts), WithSourceName(name))...)
 }
 
 // ParseWithDiagnostics parses a KDL document and returns a [ParseResult]
@@ -42,30 +44,24 @@ func ParseNamed(name string, r io.Reader, opts ...ParseOption) (*Document, error
 // or inspect [ParseResult.Diagnostics] instead (any non-nil error is from the
 // underlying reader, not the parser).
 func ParseWithDiagnostics(r io.Reader, opts ...ParseOption) (*ParseResult, error) {
-	return ParseNamedWithDiagnostics("<input>", r, opts...)
+	src, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return parseWithDiagnosticsFromBytes(src, opts...), nil
 }
 
 // ParseNamedWithDiagnostics is like [ParseWithDiagnostics] but lets you name
 // the input source so that locations in diagnostics reference that name.
 func ParseNamedWithDiagnostics(name string, r io.Reader, opts ...ParseOption) (*ParseResult, error) {
-	src, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
-	}
-	return parseWithDiagnosticsFromBytes(name, src, opts...), nil
+	return ParseWithDiagnostics(r, append(slices.Clone(opts), WithSourceName(name))...)
 }
 
 // ParseString is a convenience wrapper around [Parse] for string inputs. It
 // returns a non-nil error describing the first parse error encountered if the
 // input is not valid KDL.
 func ParseString(src string, opts ...ParseOption) (*Document, error) {
-	return ParseNamedString("<input>", src, opts...)
-}
-
-// ParseNamedString is like [ParseString] but lets you name the input source so
-// that locations in diagnostics reference that name.
-func ParseNamedString(name, src string, opts ...ParseOption) (*Document, error) {
-	result := parseWithDiagnosticsFromBytes(name, []byte(src), opts...)
+	result := parseWithDiagnosticsFromBytes([]byte(src), opts...)
 	if result.HasErrors() {
 		for _, d := range result.Diagnostics {
 			if d.Severity == SeverityError {
@@ -76,19 +72,29 @@ func ParseNamedString(name, src string, opts ...ParseOption) (*Document, error) 
 	return result.Document, nil
 }
 
+// ParseNamedString is like [ParseString] but lets you name the input source so
+// that locations in diagnostics reference that name.
+//
+// Deprecated: Use [ParseString] with the [WithSourceName] option instead.
+func ParseNamedString(name, src string, opts ...ParseOption) (*Document, error) {
+	return ParseString(src, append(slices.Clone(opts), WithSourceName(name))...)
+}
+
 // ParseStringWithDiagnostics is a convenience wrapper around
 // [ParseWithDiagnostics] for string inputs. It never returns an error for parse
 // problems — check [ParseResult.HasErrors] or inspect [ParseResult.Diagnostics]
 // instead.
 func ParseStringWithDiagnostics(src string, opts ...ParseOption) *ParseResult {
-	return ParseNamedStringWithDiagnostics("<input>", src, opts...)
+	return parseWithDiagnosticsFromBytes([]byte(src), opts...)
 }
 
 // ParseNamedStringWithDiagnostics is like [ParseStringWithDiagnostics] but lets
 // you name the input source so that locations in diagnostics reference that
 // name.
+//
+// Deprecated: Use [ParseStringWithDiagnostics] with the [WithSourceName] option instead.
 func ParseNamedStringWithDiagnostics(name, src string, opts ...ParseOption) *ParseResult {
-	return parseWithDiagnosticsFromBytes(name, []byte(src), opts...)
+	return ParseStringWithDiagnostics(src, append(slices.Clone(opts), WithSourceName(name))...)
 }
 
 // parseWithDiagnosticsFromBytes parses src and settles on a concrete KDL
@@ -110,11 +116,15 @@ func ParseNamedStringWithDiagnostics(name, src string, opts ...ParseOption) *Par
 //
 // The returned ParseResult.Version is always concrete (Version1 or Version2),
 // never VersionAuto.
-func parseWithDiagnosticsFromBytes(name string, src []byte, opts ...ParseOption) *ParseResult {
+func parseWithDiagnosticsFromBytes(src []byte, opts ...ParseOption) *ParseResult {
+	name := "<input>"
 	requested := VersionAuto
 	for _, opt := range opts {
-		if vo, ok := opt.(versionOption); ok {
-			requested = vo.v
+		if v, ok := opt.(versionOption); ok {
+			requested = Version(v)
+		}
+		if n, ok := opt.(sourceNameOption); ok {
+			name = string(n)
 		}
 	}
 
@@ -250,54 +260,6 @@ func hasErrorDiag(ds []Diagnostic) bool {
 		}
 	}
 	return false
-}
-
-type ParseOption interface {
-	applyParser(*parser)
-}
-
-type parseOptionFunc func(*parser)
-
-func (f parseOptionFunc) applyParser(p *parser) {
-	f(p)
-}
-
-func WithParseTrace(w io.Writer) ParseOption {
-	return parseOptionFunc(func(p *parser) {
-		p.trace = w
-	})
-}
-
-func WithLocations(v bool) ParseOption {
-	return parseOptionFunc(func(p *parser) {
-		p.withLocations = v
-	})
-}
-
-// DupMode controls how the parser reacts to repeated property keys on a node.
-type DupMode uint8
-
-const (
-	// DupAllow silently accepts duplicate properties, applying the KDL spec's
-	// last-wins semantics. Earlier occurrences remain accessible via
-	// [Node.PropertyEntries]. This is the default.
-	DupAllow DupMode = iota
-	// DupWarn emits a Warning diagnostic for each repeated occurrence after
-	// the first. Parsing still succeeds.
-	DupWarn
-	// DupError emits an Error diagnostic for each repeated occurrence after
-	// the first. The duplicate is still recorded on the node so the AST is
-	// complete.
-	DupError
-)
-
-// WithDuplicateProperties controls how the parser reacts when a node has the
-// same property key more than once. The KDL spec says the rightmost value
-// wins; this option lets callers surface duplicates as warnings or errors.
-func WithDuplicateProperties(mode DupMode) ParseOption {
-	return parseOptionFunc(func(p *parser) {
-		p.duplicateProps = mode
-	})
 }
 
 func newParser(lex *lexer, trace io.Writer, options ...ParseOption) *parser {

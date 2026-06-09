@@ -21,7 +21,7 @@ tags "go" "kdl"
 `
 
 func main() {
-	result, err := kdl.ParseNamedWithDiagnostics("config.kdl", strings.NewReader(broken))
+	result, err := kdl.ParseWithDiagnostics(strings.NewReader(broken), kdl.WithSourceName("config.kdl"))
 	if err != nil {
 		panic(err)
 	}

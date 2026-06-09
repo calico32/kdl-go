@@ -75,9 +75,10 @@ func TestDuplicateProps_EmitterDropsEarlier(t *testing.T) {
 }
 
 func TestDuplicateProps_DupWarn(t *testing.T) {
-	result, err := ParseNamedWithDiagnostics("<test>",
+	result, err := ParseWithDiagnostics(
 		strings.NewReader("node a=1 a=2 a=3\n"),
 		WithDuplicateProperties(DupWarn),
+		WithSourceName("<test>"),
 	)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -97,12 +98,13 @@ func TestDuplicateProps_DupWarn(t *testing.T) {
 }
 
 func TestDuplicateProps_DupError(t *testing.T) {
-	result, err := ParseNamedWithDiagnostics("<test>",
+	result, err := ParseWithDiagnostics(
 		strings.NewReader("node a=1 a=2\n"),
 		WithDuplicateProperties(DupError),
+		WithSourceName("<test>"),
 	)
 	if err != nil {
-		t.Fatalf("ParseNamedWithDiagnostics IO error: %v", err)
+		t.Fatalf("ParseWithDiagnostics IO error: %v", err)
 	}
 	if !result.HasErrors() {
 		t.Fatal("want HasErrors()=true with DupError")
@@ -126,9 +128,10 @@ func TestDuplicateProps_DupError(t *testing.T) {
 }
 
 func TestDuplicateProps_DupAllowSilent(t *testing.T) {
-	result, err := ParseNamedWithDiagnostics("<test>",
+	result, err := ParseWithDiagnostics(
 		strings.NewReader("node a=1 a=2\n"),
 		WithDuplicateProperties(DupAllow),
+		WithSourceName("<test>"),
 	)
 	if err != nil {
 		t.Fatalf("parse: %v", err)

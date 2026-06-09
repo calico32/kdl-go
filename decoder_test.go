@@ -296,7 +296,7 @@ func TestDecodeStrictMode(t *testing.T) {
 			targetType := expected.Type().Elem()
 			actual := reflect.New(targetType)
 
-			err := kdl.DecodeStrict(strings.NewReader(test.Document), actual.Elem())
+			err := kdl.Decode(strings.NewReader(test.Document), actual.Elem(), kdl.WithStrict(true))
 			if test.ShouldSucceed {
 				if err != nil {
 					t.Errorf("Unexpected error: %+v", err)

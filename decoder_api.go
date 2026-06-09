@@ -102,7 +102,7 @@ var (
 //     [ValueUnmarshaler.UnmarshalKDLValue] is used to unmarshal the value).
 //
 // Values will be formatted or parsed for canonical conversions, like string to
-// int, string to bool, etc. Use [DecodeStrict] to disable such conversions.
+// int, string to bool, etc. Use [WithStrict] to disable such conversions.
 //
 // An error is returned if the KDL value cannot be converted to the target type
 // because of a type mismatch or overflow.
@@ -111,52 +111,72 @@ var (
 //
 // Decode ignores any nodes, properties, or arguments that cannot be mapped to
 // the target value. To enable strict mode, which returns an error if any data
-// cannot be mapped, use [DecodeStrict].
-func Decode(r io.Reader, v any) error {
-	doc, err := Parse(r)
+// cannot be mapped, pass the [WithStrict] option to [Decode].
+func Decode(r io.Reader, v any, opts ...DecodeOption) error {
+	parseOpts, unmarshalOpts := splitDecodeOptions(opts)
+	doc, err := Parse(r, parseOpts...)
 	if err != nil {
 		return err
 	}
-	return UnmarshalDocument(doc, v)
+	return UnmarshalDocument(doc, v, unmarshalOpts...)
 }
 
 // DecodeStrict is like [Decode] but enables strict mode, which returns an error
 // if any nodes, properties, or arguments cannot be mapped to the target value.
 // It also disables any canonical conversions when unmarshaling values.
+//
+// Deprecated: Use [Decode] with the [WithStrict] option instead.
 func DecodeStrict(r io.Reader, v any) error {
-	doc, err := Parse(r)
-	if err != nil {
-		return err
-	}
-	return UnmarshalDocumentStrict(doc, v)
+	return Decode(r, v, WithStrict(true))
 }
 
 // DecodeNamed is like [Decode] but allows specifying the name of the input
 // source, which is used in error messages and locations.
+//
+// Deprecated: Use [Decode] with the [WithSourceName] option instead.
 func DecodeNamed(name string, r io.Reader, v any) error {
-	doc, err := ParseNamed(name, r)
-	if err != nil {
-		return err
-	}
-	return UnmarshalDocument(doc, v)
+	return Decode(r, v, WithSourceName(name))
 }
 
 // DecodeNamedStrict is like [DecodeStrict] but allows specifying the name of
 // the input source, which is used in error messages and locations.
+//
+// Deprecated: Use [Decode] with the [WithSourceName] and [WithStrict] options
+// instead.
 func DecodeNamedStrict(name string, r io.Reader, v any) error {
-	doc, err := ParseNamed(name, r)
+	return Decode(r, v, WithSourceName(name), WithStrict(true))
+}
+
+// DecodeString is a convenience wrapper around [Decode] for string inputs.
+func DecodeString(src string, v any, opts ...DecodeOption) error {
+	parseOpts := []ParseOption{}
+	for _, opt := range opts {
+		if p, ok := opt.(ParseOption); ok {
+			parseOpts = append(parseOpts, p)
+		}
+	}
+	unmarshalOpts := []UnmarshalOption{}
+	for _, opt := range opts {
+		if u, ok := opt.(UnmarshalOption); ok {
+			unmarshalOpts = append(unmarshalOpts, u)
+		}
+	}
+	doc, err := ParseString(src, parseOpts...)
 	if err != nil {
 		return err
 	}
-	return UnmarshalDocumentStrict(doc, v)
+	return UnmarshalDocument(doc, v, unmarshalOpts...)
 }
 
 // Unmarshal unmarshals n into v. See [Decode] for details.
-func Unmarshal(n *Node, v any) error {
+func Unmarshal(n *Node, v any, opts ...UnmarshalOption) error {
 	if u, ok := v.(Unmarshaler); ok {
 		return u.UnmarshalKDL(n)
 	}
 	d := &decoder{strict: false}
+	for _, opt := range opts {
+		opt.applyUnmarshaler(d)
+	}
 	target, err := unwrapPointerOrInterface(v)
 	if err != nil {
 		return err
@@ -169,31 +189,26 @@ func Unmarshal(n *Node, v any) error {
 // any nodes, properties, or arguments cannot be mapped to the target value. It
 // also disables any canonical conversions when unmarshaling values. See
 // [DecodeStrict] for details.
+//
+// Deprecated: Use [Unmarshal] with the [WithStrict] option instead.
 func UnmarshalStrict(n *Node, v any) error {
-	if u, ok := v.(Unmarshaler); ok {
-		return u.UnmarshalKDL(n)
-	}
-	d := &decoder{strict: true}
-	target, err := unwrapPointerOrInterface(v)
-	if err != nil {
-		return err
-	}
-
-	return d.unmarshalNode(n, structTag{}, target)
+	return Unmarshal(n, v, WithStrict(true))
 }
 
 // UnmarshalDocument unmarshals the given KDL [Document] into v. See [Decode]
 // for details.
-func UnmarshalDocument(doc *Document, v any) error {
-	return unmarshalDocument(doc, v, false)
+func UnmarshalDocument(doc *Document, v any, opts ...UnmarshalOption) error {
+	return unmarshalDocument(doc, v, opts...)
 }
 
 // UnmarshalDocumentStrict unmarshals the given KDL [Document] into v in strict
 // mode, which returns an error if any nodes, properties, or arguments cannot
 // be mapped to the target value. It also disables any canonical conversions
 // when unmarshaling values. See [DecodeStrict] for details.
+//
+// Deprecated: Use [UnmarshalDocument] with the [WithStrict] option instead.
 func UnmarshalDocumentStrict(doc *Document, v any) error {
-	return unmarshalDocument(doc, v, true)
+	return UnmarshalDocument(doc, v, WithStrict(true))
 }
 
 // Located[T] is a wrapper type that can be used to unmarshal a T along with its

@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-// a decoder is a KDL decoder.
+// A decoder is a KDL unmarshaler.
 type decoder struct {
-	strict bool // required
+	strict bool
 }
 
 // unmarshalDocument unmarshals a KDL document into the given Go value v.
-func unmarshalDocument(doc *Document, v any, strict bool) error {
+func unmarshalDocument(doc *Document, v any, opts ...UnmarshalOption) error {
 	if u, ok := v.(DocumentUnmarshaler); ok {
 		return u.UnmarshalKDLDocument(doc)
 	}
@@ -25,7 +25,10 @@ func unmarshalDocument(doc *Document, v any, strict bool) error {
 		return err
 	}
 
-	d := &decoder{strict: strict}
+	d := &decoder{strict: false}
+	for _, opt := range opts {
+		opt.applyUnmarshaler(d)
+	}
 	switch target.Kind() {
 	case reflect.Map:
 		return d.unmarshalNodesIntoMap(doc.Nodes, target)

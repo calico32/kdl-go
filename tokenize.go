@@ -141,8 +141,8 @@ func tokenKindOf(t tokenType) TokenKind {
 func Tokenize(src []byte, opts ...ParseOption) []Token {
 	version := VersionAuto
 	for _, opt := range opts {
-		if vo, ok := opt.(versionOption); ok {
-			version = vo.v
+		if v, ok := opt.(versionOption); ok {
+			version = Version(v)
 			break
 		}
 	}

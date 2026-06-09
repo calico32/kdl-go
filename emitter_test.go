@@ -10,7 +10,7 @@ func TestEmitFloat(t *testing.T) {
 	tests := []struct {
 		name     string
 		val      Value
-		opts     []EmitterOption
+		opts     []EmitOption
 		expected string
 	}{
 		{
@@ -41,7 +41,7 @@ func TestEmitFloat(t *testing.T) {
 		{
 			name: "float64 with options",
 			val:  NewFloat(123.0),
-			opts: []EmitterOption{
+			opts: []EmitOption{
 				WithTestSuiteFloatOptions(),
 			},
 			expected: "node 1.23E+02\n",
@@ -49,7 +49,7 @@ func TestEmitFloat(t *testing.T) {
 		{
 			name: "float64 zero with options",
 			val:  NewFloat(0.0),
-			opts: []EmitterOption{
+			opts: []EmitOption{
 				WithTestSuiteFloatOptions(),
 			},
 			expected: "node 0.0\n",
@@ -79,7 +79,7 @@ func TestEmitFloat(t *testing.T) {
 		{
 			name: "floatPlus option",
 			val:  NewFloat(1.23),
-			opts: []EmitterOption{
+			opts: []EmitOption{
 				WithFloatPlus(true),
 			},
 			expected: "node +1.23\n",
@@ -87,7 +87,7 @@ func TestEmitFloat(t *testing.T) {
 		{
 			name: "floatPlus option negative",
 			val:  NewFloat(-1.23),
-			opts: []EmitterOption{
+			opts: []EmitOption{
 				WithFloatPlus(true),
 			},
 			expected: "node -1.23\n",

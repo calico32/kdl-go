@@ -10,7 +10,7 @@ import (
 // parseDoc is a test helper that parses src and fatals on any error diagnostic.
 func parseDoc(t *testing.T, src string) *Document {
 	t.Helper()
-	result, err := ParseNamedWithDiagnostics("<test>", strings.NewReader(src))
+	result, err := ParseWithDiagnostics(strings.NewReader(src), WithSourceName("<test>"))
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}

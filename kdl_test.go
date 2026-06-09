@@ -79,7 +79,7 @@ func testKdlSuite(version kdl.Version, fs filesys, dir string, t *testing.T) {
 				return // panic occurred
 			}
 
-			opts := []kdl.EmitterOption{
+			opts := []kdl.EmitOption{
 				kdl.WithTestSuiteFloatOptions(),
 				kdl.WithVersion(version),
 			}
@@ -106,10 +106,10 @@ func testKdlSuite(version kdl.Version, fs filesys, dir string, t *testing.T) {
 // Lots of test cases expect different formatting for numbers similar to the
 // format in the input KDL, but because we don't keep track of the that format
 // we need to cheat a bit and change the emitter options based on the case name.
-func testSpecificEmitterOptions(caseName string, version kdl.Version) []kdl.EmitterOption {
+func testSpecificEmitterOptions(caseName string, version kdl.Version) []kdl.EmitOption {
 	switch caseName {
 	case "no_decimal_exponent.kdl":
-		return []kdl.EmitterOption{kdl.WithFloatDecimalPoint(false)}
+		return []kdl.EmitOption{kdl.WithFloatDecimalPoint(false)}
 	}
 
 	if version == kdl.Version2 {
@@ -119,26 +119,26 @@ func testSpecificEmitterOptions(caseName string, version kdl.Version) []kdl.Emit
 
 	switch {
 	case strings.HasPrefix(caseName, "binary"):
-		return []kdl.EmitterOption{kdl.WithIntegerFormat(kdl.Binary)}
+		return []kdl.EmitOption{kdl.WithIntegerFormat(kdl.Binary)}
 	case strings.HasPrefix(caseName, "hex"):
-		return []kdl.EmitterOption{kdl.WithIntegerFormat(kdl.Hex)}
+		return []kdl.EmitOption{kdl.WithIntegerFormat(kdl.Hex)}
 	case strings.HasPrefix(caseName, "octal"):
-		return []kdl.EmitterOption{kdl.WithIntegerFormat(kdl.Octal)}
+		return []kdl.EmitOption{kdl.WithIntegerFormat(kdl.Octal)}
 	case strings.HasPrefix(caseName, "empty_child"):
-		return []kdl.EmitterOption{kdl.WithEmitEmptyChildren(true)}
+		return []kdl.EmitOption{kdl.WithEmitEmptyChildren(true)}
 	}
 
 	switch caseName {
 	case "leading_zero_binary.kdl":
-		return []kdl.EmitterOption{kdl.WithIntegerFormat(kdl.Binary)}
+		return []kdl.EmitOption{kdl.WithIntegerFormat(kdl.Binary)}
 	case "trailing_underscore_hex.kdl":
-		return []kdl.EmitterOption{kdl.WithIntegerFormat(kdl.Hex)}
+		return []kdl.EmitOption{kdl.WithIntegerFormat(kdl.Hex)}
 	case "leading_zero_oct.kdl",
 		"trailing_underscore_octal.kdl",
 		"underscore_in_octal.kdl":
-		return []kdl.EmitterOption{kdl.WithIntegerFormat(kdl.Octal)}
+		return []kdl.EmitOption{kdl.WithIntegerFormat(kdl.Octal)}
 	case "slashdash_node_in_child.kdl":
-		return []kdl.EmitterOption{kdl.WithEmitEmptyChildren(true)}
+		return []kdl.EmitOption{kdl.WithEmitEmptyChildren(true)}
 	}
 
 	return nil

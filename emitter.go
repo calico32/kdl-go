@@ -36,7 +36,7 @@ import (
 //   - [WithEmitEmptyChildren] to emit an empty children block when a node has no children (default: false). Also
 //     configurable at the node level via [Node.Hints].
 //   - [WithIntegerFormat] to set the format to use for integers (default: [Decimal]).
-func Emit(d *Document, w io.Writer, opts ...EmitterOption) error {
+func Emit(d *Document, w io.Writer, opts ...EmitOption) error {
 	e := &emitter{
 		w:      w,
 		indent: "    ",
@@ -60,7 +60,7 @@ func Emit(d *Document, w io.Writer, opts ...EmitterOption) error {
 
 // EmitToString is like [Emit] but returns the emitted KDL as a string; see
 // [Emit] for details.
-func EmitToString(d *Document, opts ...EmitterOption) (string, error) {
+func EmitToString(d *Document, opts ...EmitOption) (string, error) {
 	var buf strings.Builder
 	err := Emit(d, &buf, opts...)
 	if err != nil {
@@ -104,95 +104,6 @@ type EmitterHints struct {
 	// EmitEmptyChildren controls whether to emit an empty children block when
 	// the node has no children.
 	EmitEmptyChildren bool
-}
-
-type EmitterOption interface {
-	applyEmitter(*emitter)
-}
-
-type emitterOptionFunc func(*emitter)
-
-func (f emitterOptionFunc) applyEmitter(e *emitter) {
-	f(e)
-}
-
-// WithIndent sets the indent string for the emitter.
-func WithIndent(s string) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.indent = s })
-}
-
-// WithStringAlwaysQuote sets whether to always quote strings.
-func WithStringAlwaysQuote(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.stringAlwaysQuote = v })
-}
-
-// WithFloatCapitalExponent sets whether to use capital 'E' for exponents.
-func WithFloatCapitalExponent(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.floatCapitalExponent = v })
-}
-
-// WithFloatMinExponent sets the minimum exponent for using scientific notation.
-func WithFloatMinExponent(v int) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.floatMinExponent = v })
-}
-
-// WithFloatPlus sets whether to include '+' for positive floats.
-func WithFloatPlus(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.floatPlus = v })
-}
-
-// WithFloatDecimalPoint sets whether to always include a decimal point in floats.
-func WithFloatDecimalPoint(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.floatDecimalPoint = v })
-}
-
-// WithFloatExponentPlus sets whether to include '+' for positive exponents.
-func WithFloatExponentPlus(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.floatExponentPlus = v })
-}
-
-// WithFloatDecimalOrExponent sets whether to always include either a decimal
-// point or exponent part in floats.
-func WithFloatDecimalOrExponent(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.floatDecimalOrExponent = v })
-}
-
-// WithTestSuiteFloatOptions applies float emission options that match the
-// upstream KDL 2.0.0 test suite expectations. Specifically:
-//   - Capital 'E' for exponents
-//   - Minimum exponent of 2 (i.e., use scientific notation for exponents >= 2)
-//   - Always include a decimal point
-//   - Always include a '+' for positive exponents
-func WithTestSuiteFloatOptions() EmitterOption {
-	return emitterOptionFunc(func(e *emitter) {
-		e.floatCapitalExponent = true
-		e.floatMinExponent = 2
-		e.floatDecimalPoint = true
-		e.floatExponentPlus = true
-	})
-}
-
-// WithIntegerFormat sets the format to use for integers.
-func WithIntegerFormat(f IntegerFormat) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.integerFormat = f })
-}
-
-// WithEmitEmptyChildren sets whether to emit an empty children block when
-// a node has no children.
-func WithEmitEmptyChildren(v bool) EmitterOption {
-	return emitterOptionFunc(func(e *emitter) { e.emitEmptyChildren = v })
-}
-
-type versionOption struct {
-	v Version
-}
-
-func (v versionOption) applyParser(p *parser)   { p.version = v.v }
-func (v versionOption) applyEmitter(e *emitter) { e.version = v.v }
-
-// WithVersion sets the KDL version to parse/emit.
-func WithVersion(v Version) versionOption {
-	return versionOption{v}
 }
 
 func (e *emitter) emit(s string) error {

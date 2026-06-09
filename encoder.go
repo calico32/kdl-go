@@ -17,13 +17,14 @@ import (
 //
 // By default, struct fields are marshaled as child nodes. To customize this
 // behavior, use struct tags as described in [Decode].
-func Encode(v any, w io.Writer, opts ...EmitterOption) error {
-	doc, err := Marshal(v)
+func Encode(v any, w io.Writer, opts ...EncodeOption) error {
+	marshalOpts, emitOpts := splitEncodeOptions(opts)
+	doc, err := Marshal(v, marshalOpts...)
 	if err != nil {
 		return err
 	}
 
-	err = Emit(doc, w, opts...)
+	err = Emit(doc, w, emitOpts...)
 	if err != nil {
 		return err
 	}
@@ -32,7 +33,7 @@ func Encode(v any, w io.Writer, opts ...EmitterOption) error {
 
 // EncodeToString is like [Encode] but returns the emitted KDL as a string; see
 // [Encode] for details.
-func EncodeToString(v any, opts ...EmitterOption) (string, error) {
+func EncodeToString(v any, opts ...EncodeOption) (string, error) {
 	var buf strings.Builder
 	err := Encode(v, &buf, opts...)
 	if err != nil {
@@ -40,8 +41,6 @@ func EncodeToString(v any, opts ...EmitterOption) (string, error) {
 	}
 	return buf.String(), nil
 }
-
-type MarshalOption func(*encoder)
 
 // Marshal marshals the given value into a KDL Document. v must be a struct,
 // map, or [DocumentMarshaler]. See [Encode] for details on marshaling behavior.
@@ -80,7 +79,7 @@ func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 		stack: []*Document{doc},
 	}
 	for _, opt := range opts {
-		opt(e)
+		opt.applyMarshaler(e)
 	}
 	defer un(e.trace("Marshal %s", target.Type()))
 
@@ -120,14 +119,6 @@ func Marshal(v any, opts ...MarshalOption) (*Document, error) {
 	}
 
 	return doc, nil
-}
-
-// WithTrace is a [MarshalOption] that enables tracing of the marshaling
-// process to the given writer.
-func WithTrace(w io.Writer) MarshalOption {
-	return func(e *encoder) {
-		e.traceWriter = w
-	}
 }
 
 type encoder struct {
