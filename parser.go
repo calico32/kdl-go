@@ -53,6 +53,9 @@ func ParseWithDiagnostics(r io.Reader, opts ...ParseOption) (*ParseResult, error
 
 // ParseNamedWithDiagnostics is like [ParseWithDiagnostics] but lets you name
 // the input source so that locations in diagnostics reference that name.
+//
+// Deprecated: Use [ParseWithDiagnostics] with the [WithSourceName] option
+// instead.
 func ParseNamedWithDiagnostics(name string, r io.Reader, opts ...ParseOption) (*ParseResult, error) {
 	return ParseWithDiagnostics(r, append(slices.Clone(opts), WithSourceName(name))...)
 }
