@@ -10,11 +10,30 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          submodules: 'true'
-      - uses: actions/setup-go@v6
+          submodules: "true"
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
-          go-version: '1.25'
+          go-version: "1.25"
       - name: Run tests
         run: go test -v ./...
+  kdl_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          submodules: "true"
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version: "1.25"
+      - name: Download kdl-test
+        run: |
+          set -e
+          curl -fsSL -o /tmp/kdl-test.tar.gz https://github.com/kdl-org/kdl-test/releases/download/v0.2.0/kdl-test-0.2.0-linux-x86_64.tar.gz
+          echo "1627ea50594c7c322ed5c7fb0d0063b2ac20a7a9460acc9363fa1777c92364c3  /tmp/kdl-test.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/kdl-test.tar.gz -C /tmp
+      - name: Build kdlgo-test
+        run: go build -o kdlgo-test ./bin/kdlgo-test
+      - name: Run kdl-test with kdlgo-test
+        run: /tmp/kdl-test run --decoder=./kdlgo-test
