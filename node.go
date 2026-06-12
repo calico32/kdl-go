@@ -447,6 +447,29 @@ func (n *Node) AddChildrenFunc(fn func(n *Document)) *Node {
 	return n
 }
 
+// RemoveChild removes the first child with the given name from the KDL node and
+// returns the parent node. If no such child exists, RemoveChild does nothing.
+func (n *Node) RemoveChild(name string) *Node {
+	n.children.RemoveNode(name)
+	return n
+}
+
+// RemoveChildren removes all children with the given name from the KDL node and
+// returns the parent node. If no such children exist, RemoveChildren does
+// nothing.
+func (n *Node) RemoveChildren(name string) *Node {
+	n.children.RemoveNodes(name)
+	return n
+}
+
+// RemoveChildAt removes the child at the given index from the KDL node and
+// returns the parent node. If the index is out of bounds, RemoveChildAt does
+// nothing.
+func (n *Node) RemoveChildAt(index int) *Node {
+	n.children.RemoveNodeAt(index)
+	return n
+}
+
 // GetChild gets the first child with the given name from the KDL node and returns it.
 //
 // If no such child exists, it returns nil.

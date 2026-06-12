@@ -27,6 +27,47 @@ func (d *Document) AddNodes(nodes ...*Node) *Document {
 	return d
 }
 
+// RemoveNode removes the first node with the given name from the document and
+// returns the document.
+//
+// If no such node exists, the document is unchanged.
+func (d *Document) RemoveNode(name string) *Document {
+	for i, child := range d.Nodes {
+		if child.name == name {
+			d.Nodes = append(d.Nodes[:i], d.Nodes[i+1:]...)
+			break
+		}
+	}
+	return d
+}
+
+// RemoveNodes removes all nodes with the given name from the document and
+// returns the document.
+//
+// If no such nodes exist, the document is unchanged.
+func (d *Document) RemoveNodes(name string) *Document {
+	nodes := make([]*Node, 0, len(d.Nodes))
+	for _, child := range d.Nodes {
+		if child.name != name {
+			nodes = append(nodes, child)
+		}
+	}
+	d.Nodes = nodes
+	return d
+}
+
+// RemoveNodeAt removes the node at the given index from the document and
+// returns the document.
+//
+// If the index is out of bounds, the document is unchanged.
+func (d *Document) RemoveNodeAt(index int) *Document {
+	if index < 0 || index >= len(d.Nodes) {
+		return d
+	}
+	d.Nodes = append(d.Nodes[:index], d.Nodes[index+1:]...)
+	return d
+}
+
 // GetNode gets the first node with the given name from the KDL document and
 // returns it.
 //
