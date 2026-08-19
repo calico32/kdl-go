@@ -19,6 +19,17 @@ func (d *decoder) unmarshalValue(value Value, tag structTag, target reflect.Valu
 			return u.UnmarshalKDLValue(value)
 		}
 	}
+	if reflect.PointerTo(target.Type()).AssignableTo(reflect.TypeFor[ValueUnmarshaler]()) {
+		if target.CanAddr() {
+			return target.Addr().Interface().(ValueUnmarshaler).UnmarshalKDLValue(value)
+		}
+		u := reflect.New(target.Type())
+		if err := u.Interface().(ValueUnmarshaler).UnmarshalKDLValue(value); err != nil {
+			return err
+		}
+		target.Set(u.Elem())
+		return nil
+	}
 
 	switch target.Type() {
 	case reflect.TypeFor[Value]():

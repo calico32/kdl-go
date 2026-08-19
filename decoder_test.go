@@ -10,6 +10,7 @@ import (
 
 	"github.com/calico32/kdl-go"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/google/go-cmp/cmp"
 )
 
 type DecoderTest struct {
@@ -702,5 +703,43 @@ func TestDecodeLocated(t *testing.T) {
 
 	if buf.String() != expectedDoc {
 		t.Errorf("Document mismatch\nExpected:\n%s\nGot:\n%s", expectedDoc, buf.String())
+	}
+}
+
+type Plus10 int
+
+var _ kdl.ValueUnmarshaler = (*Plus10)(nil)
+
+func (c *Plus10) UnmarshalKDLValue(value kdl.Value) error {
+	if value.Kind() != kdl.Int {
+		return fmt.Errorf("expected int value, got %v", value.Kind())
+	}
+	*c = Plus10(value.Int() + 10)
+	return nil
+}
+
+func TestDecodeAddrToValueUnmarshaler(t *testing.T) {
+	type N struct {
+		Arg  Plus10 `kdl:",arg"`
+		Prop Plus10 `kdl:"prop"`
+	}
+	type T struct {
+		Field Plus10 `kdl:"field"`
+		Node  N      `kdl:"node"`
+	}
+
+	doc := "field 1\nnode 2 prop=3\n"
+
+	var got T
+	err := kdl.DecodeString(doc, &got)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	want := T{Field: 11, Node: N{Arg: 12, Prop: 13}}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Decode mismatch (-want +got):\n%s", diff)
 	}
 }

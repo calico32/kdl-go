@@ -155,6 +155,9 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 		if len(node.args) != 1 {
 			return fmt.Errorf("expected exactly one argument (unmarshaling node %q into %s)", node.name, target.Type())
 		}
+		if target.CanAddr() {
+			return target.Addr().Interface().(ValueUnmarshaler).UnmarshalKDLValue(node.args[0])
+		}
 		u := reflect.New(target.Type())
 		err := u.Interface().(ValueUnmarshaler).UnmarshalKDLValue(node.args[0])
 		if err != nil {
