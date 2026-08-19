@@ -117,6 +117,34 @@ var (
 	durationType = reflect.TypeFor[time.Duration]()
 )
 
+// annotationOnValue returns true if the type t is a value type that should read
+// a Typed[T] annotation from the value rather than from the node. This is false
+// for [Unmarshaler]s, true for [ValueUnmarshaler]s and
+// primitives/primitive-like builtins, and false for everything else (structs,
+// maps, slices, arrays, etc.).
+func annotationOnValue(t reflect.Type) bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if reflect.PointerTo(t).AssignableTo(reflect.TypeFor[Unmarshaler]()) {
+		return false
+	}
+	if reflect.PointerTo(t).AssignableTo(reflect.TypeFor[ValueUnmarshaler]()) {
+		return true
+	}
+	switch t {
+	case timeType, durationType, bigIntType, bigFloatType:
+		return true
+	}
+	switch t.Kind() {
+	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.Bool, reflect.Interface:
+		return true
+	}
+	return false
+}
+
 // unmarshalNode unmarshals a KDL node into a single value. See [Unmarshal] for
 // details on supported target types. It handles special cases like time.Time and
 // time.Duration, using an optional format string and flags for guidance. It
@@ -138,6 +166,21 @@ func (d *decoder) unmarshalNode(node *Node, tag structTag, target reflect.Value)
 		}
 		target.FieldByName("Start").Set(reflect.ValueOf(start))
 		target.FieldByName("End").Set(reflect.ValueOf(end))
+		return nil
+	}
+
+	if _, ok := target.Addr().Interface().(typedType); ok {
+		inner := target.FieldByName("Value")
+		if err := d.unmarshalNode(node, tag, inner); err != nil {
+			return err
+		}
+		typ, ok := node.TypeAnnotation()
+		// read the annotation from the arg if the inner type is a value type
+		if len(node.args) == 1 && annotationOnValue(inner.Type()) {
+			typ, ok = node.args[0].TypeAnnotation()
+		}
+		target.FieldByName("Type").Set(reflect.ValueOf(typ))
+		target.FieldByName("HasType").Set(reflect.ValueOf(ok))
 		return nil
 	}
 

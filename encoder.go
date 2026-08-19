@@ -180,7 +180,7 @@ func (e *encoder) encodeStructFieldsAsNodes(target reflect.Value) error {
 			continue
 		}
 
-		err := e.encodeValueAsNode(tag.name, tag, field)
+		err := e.encodeValueAsNode(nodeDetails{name: tag.name}, tag, field)
 		if err != nil {
 			return err
 		}
@@ -189,14 +189,16 @@ func (e *encoder) encodeStructFieldsAsNodes(target reflect.Value) error {
 	return nil
 }
 
-func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
+func (e *encoder) encodeStructAsNode(info nodeDetails, target reflect.Value) error {
 	defer un(e.trace("encodeStructAsNode %s", target.Type()))
 	ctx, err := newStructContext(target.Type())
 	if err != nil {
 		return err
 	}
 
-	node := NewNode(name)
+	node := NewNode(info.name)
+	node.typ = info.typeAnnot
+	node.typeValid = info.hasTypeAnnot
 
 	for fieldIndex := range target.Type().NumField() {
 		tag := ctx.tags[fieldIndex]
@@ -322,7 +324,7 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 
 		// no special flags, treat as child node
 		e.pushContext(node.Children())
-		err := e.encodeValueAsNode(tag.name, tag, field)
+		err := e.encodeValueAsNode(nodeDetails{name: tag.name}, tag, field)
 		if err != nil {
 			return err
 		}
@@ -333,9 +335,11 @@ func (e *encoder) encodeStructAsNode(name string, target reflect.Value) error {
 	return nil
 }
 
-func (e *encoder) encodeMapAsNode(name string, target reflect.Value) error {
+func (e *encoder) encodeMapAsNode(info nodeDetails, target reflect.Value) error {
 	defer un(e.trace("encodeMapAsNode %s", target.Type()))
-	node := NewNode(name)
+	node := NewNode(info.name)
+	node.typ = info.typeAnnot
+	node.typeValid = info.hasTypeAnnot
 	e.pushContext(node.Children())
 	err := e.encodeMapEntriesAsNodes(target)
 	if err != nil {
@@ -366,7 +370,7 @@ func (e *encoder) encodeMapEntriesAsNodes(target reflect.Value) error {
 
 	for _, key := range keys {
 		val := target.MapIndex(key.Value)
-		err := e.encodeValueAsNode(key.string, structTag{}, val)
+		err := e.encodeValueAsNode(nodeDetails{name: key.string}, structTag{}, val)
 		if err != nil {
 			return err
 		}
@@ -374,15 +378,21 @@ func (e *encoder) encodeMapEntriesAsNodes(target reflect.Value) error {
 	return nil
 }
 
-func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.Value) error {
-	defer un(e.trace("encodeValueAsNode %s %s", name, target.Type()))
+type nodeDetails struct {
+	name         string
+	typeAnnot    string
+	hasTypeAnnot bool
+}
 
-	if encoded, err := e.tryEncodeCustomMarshalerAsNode(name, target); encoded || err != nil {
+func (e *encoder) encodeValueAsNode(info nodeDetails, tag structTag, target reflect.Value) error {
+	defer un(e.trace("encodeValueAsNode %v %s", info, target.Type()))
+
+	if encoded, err := e.tryEncodeCustomMarshalerAsNode(info, target); encoded || err != nil {
 		return err
 	}
 
 	for target.Kind() == reflect.Pointer {
-		if encoded, err := e.tryEncodeCustomMarshalerAsNode(name, target); encoded || err != nil {
+		if encoded, err := e.tryEncodeCustomMarshalerAsNode(info, target); encoded || err != nil {
 			return err
 		}
 		target = target.Elem()
@@ -396,7 +406,23 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 
 	if _, ok := target.Interface().(locatedType); ok {
 		inner := target.FieldByName("Value")
-		return e.encodeValueAsNode(name, tag, inner)
+		return e.encodeValueAsNode(info, tag, inner)
+	}
+
+	if _, ok := target.Interface().(typedType); ok {
+		// value-shaped inner: annotation goes on the value
+		if v, err := e.toValue(target, tag.format); err == nil {
+			node := NewNode(info.name, v)
+			node.typ = info.typeAnnot
+			node.typeValid = info.hasTypeAnnot
+			e.currentContext().AddNode(node)
+			return nil
+		}
+		// non-value inner (struct, map, slice): annotation goes on the node
+		info.typeAnnot = target.FieldByName("Type").String()
+		info.hasTypeAnnot = target.FieldByName("HasType").Bool()
+		inner := target.FieldByName("Value")
+		return e.encodeValueAsNode(info, tag, inner)
 	}
 
 	if target.Type() == timeType || target.Type() == durationType {
@@ -404,7 +430,10 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		if err != nil {
 			return err
 		}
-		e.currentContext().AddNode(NewNode(name, value))
+		node := NewNode(info.name, value)
+		node.typ = info.typeAnnot
+		node.typeValid = info.hasTypeAnnot
+		e.currentContext().AddNode(node)
 		return nil
 	}
 
@@ -416,11 +445,13 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		if err != nil {
 			return err
 		}
-		childNode := NewNode(name, value)
+		childNode := NewNode(info.name, value)
+		childNode.typ = info.typeAnnot
+		childNode.typeValid = info.hasTypeAnnot
 		e.currentContext().AddNode(childNode)
 
 	case reflect.Struct:
-		err := e.encodeStructAsNode(name, target)
+		err := e.encodeStructAsNode(info, target)
 		if err != nil {
 			return err
 		}
@@ -429,14 +460,16 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		if tag.flags&multiple != 0 {
 			// each element becomes its own node
 			for i := 0; i < target.Len(); i++ {
-				err := e.encodeValueAsNode(name, tag, target.Index(i))
+				err := e.encodeValueAsNode(info, tag, target.Index(i))
 				if err != nil {
 					return err
 				}
 			}
 			return nil
 		}
-		child := NewNode(name)
+		child := NewNode(info.name)
+		child.typ = info.typeAnnot
+		child.typeValid = info.hasTypeAnnot
 		for i := 0; i < target.Len(); i++ {
 			value, err := e.toValue(target.Index(i), tag.format)
 			if err != nil {
@@ -447,7 +480,7 @@ func (e *encoder) encodeValueAsNode(name string, tag structTag, target reflect.V
 		e.currentContext().AddNode(child)
 
 	case reflect.Map:
-		err := e.encodeMapAsNode(name, target)
+		err := e.encodeMapAsNode(info, target)
 		if err != nil {
 			return err
 		}
@@ -490,8 +523,8 @@ func (e *encoder) encodeStructIntoProperties(node *Node, target reflect.Value) e
 	return nil
 }
 
-func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Value) (bool, error) {
-	defer un(e.trace("tryEncodeCustomMarshalerAsNode %s %s", name, target.Type()))
+func (e *encoder) tryEncodeCustomMarshalerAsNode(info nodeDetails, target reflect.Value) (bool, error) {
+	defer un(e.trace("tryEncodeCustomMarshalerAsNode %s %s", info, target.Type()))
 	getPointer := func() reflect.Value {
 		if target.CanAddr() {
 			return target.Addr()
@@ -509,7 +542,11 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 			return false, err
 		}
 		if n.name == "" {
-			n.name = name
+			n.name = info.name
+		}
+		if info.hasTypeAnnot && !n.typeValid {
+			n.typ = info.typeAnnot
+			n.typeValid = true
 		}
 		e.currentContext().AddNode(n)
 		return true, nil
@@ -522,7 +559,11 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 			return false, err
 		}
 		if n.name == "" {
-			n.name = name
+			n.name = info.name
+		}
+		if info.hasTypeAnnot && !n.typeValid {
+			n.typ = info.typeAnnot
+			n.typeValid = true
 		}
 		e.currentContext().AddNode(n)
 		return true, nil
@@ -533,7 +574,11 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 		if err != nil {
 			return false, err
 		}
-		e.currentContext().AddNode(NewNode(name).AddChildren(doc.Nodes...))
+		node := NewNode(info.name)
+		node.typ = info.typeAnnot
+		node.typeValid = info.hasTypeAnnot
+		node.AddChildren(doc.Nodes...)
+		e.currentContext().AddNode(node)
 		return true, nil
 	}
 
@@ -543,7 +588,11 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 		if err != nil {
 			return false, err
 		}
-		e.currentContext().AddNode(NewNode(name).AddChildren(doc.Nodes...))
+		node := NewNode(info.name)
+		node.typ = info.typeAnnot
+		node.typeValid = info.hasTypeAnnot
+		node.AddChildren(doc.Nodes...)
+		e.currentContext().AddNode(node)
 		return true, nil
 	}
 
@@ -552,7 +601,10 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 		if err != nil {
 			return false, err
 		}
-		childNode := NewNode(name, v)
+		// TODO: type on value or node?
+		v.typ = info.typeAnnot
+		v.typeValid = info.hasTypeAnnot
+		childNode := NewNode(info.name, v)
 		e.currentContext().AddNode(childNode)
 		return true, nil
 	}
@@ -563,7 +615,10 @@ func (e *encoder) tryEncodeCustomMarshalerAsNode(name string, target reflect.Val
 		if err != nil {
 			return false, err
 		}
-		childNode := NewNode(name, v)
+		// TODO: type on value or node?
+		v.typ = info.typeAnnot
+		v.typeValid = info.hasTypeAnnot
+		childNode := NewNode(info.name, v)
 		e.currentContext().AddNode(childNode)
 		return true, nil
 	}
@@ -581,6 +636,16 @@ func (e *encoder) toValue(target reflect.Value, format string) (Value, error) {
 	if _, ok := target.Interface().(locatedType); ok {
 		inner := target.FieldByName("Value")
 		return e.toValue(inner, format)
+	}
+	if _, ok := target.Interface().(typedType); ok {
+		inner := target.FieldByName("Value")
+		v, err := e.toValue(inner, format)
+		if err != nil {
+			return Value{}, err
+		}
+		v.typ = target.FieldByName("Type").String()
+		v.typeValid = target.FieldByName("HasType").Bool()
+		return v, nil
 	}
 	switch target.Type() {
 	case timeType:
@@ -604,6 +669,9 @@ func isOmitZero(flags tagFlags, value reflect.Value) bool {
 	}
 	zero := value.IsZero()
 	if _, ok := value.Interface().(locatedType); ok {
+		zero = zero || value.FieldByName("Value").IsZero()
+	}
+	if _, ok := value.Interface().(typedType); ok {
 		zero = zero || value.FieldByName("Value").IsZero()
 	}
 	return zero

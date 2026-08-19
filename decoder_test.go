@@ -706,6 +706,94 @@ func TestDecodeLocated(t *testing.T) {
 	}
 }
 
+func TestDecodeTyped(t *testing.T) {
+	type Foo struct {
+		Arg  kdl.Typed[string] `kdl:",arg"`
+		Prop kdl.Typed[int]    `kdl:"p,prop"`
+	}
+
+	type T struct {
+		Name  kdl.Typed[string] `kdl:"name"`
+		Age   *kdl.Typed[int]   `kdl:"age"`
+		Foo   Foo               `kdl:"foo"`
+		Plain kdl.Typed[string] `kdl:"plain"`
+		Empty kdl.Typed[string] `kdl:"empty"`
+	}
+
+	doc := "name (person)Alice\nage (u8)30\nfoo (a)bar p=(u8)5\nplain hello\nempty (\"\")x\n"
+
+	var got T
+	err := kdl.Decode(strings.NewReader(doc), &got)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	want := T{
+		Name: kdl.Typed[string]{Value: "Alice", Type: "person", HasType: true},
+		Age:  &kdl.Typed[int]{Value: 30, Type: "u8", HasType: true},
+		Foo: Foo{
+			Arg:  kdl.Typed[string]{Value: "bar", Type: "a", HasType: true},
+			Prop: kdl.Typed[int]{Value: 5, Type: "u8", HasType: true},
+		},
+		Plain: kdl.Typed[string]{Value: "hello"},
+		Empty: kdl.Typed[string]{Value: "x", Type: "", HasType: true},
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Decode mismatch (-want +got):\n%s", diff)
+	}
+
+	var buf strings.Builder
+	err = kdl.Encode(got, &buf)
+	if err != nil {
+		t.Errorf("Failed to encode: %+v", err)
+		return
+	}
+
+	if buf.String() != doc {
+		t.Errorf("Document mismatch\nExpected:\n%s\nGot:\n%s", doc, buf.String())
+	}
+}
+
+type NodeUnmarshaler struct {
+	Arg string
+}
+
+var _ kdl.Unmarshaler = (*NodeUnmarshaler)(nil)
+
+func (n *NodeUnmarshaler) UnmarshalKDL(node *kdl.Node) error {
+	n.Arg = node.Arg(0).String()
+	return nil
+}
+
+func TestDecodeTypedNodeUnmarshaler(t *testing.T) {
+	type T struct {
+		Custom kdl.Typed[NodeUnmarshaler] `kdl:"custom"`
+	}
+
+	doc := "(node-t)custom (arg-t)hello\n"
+
+	var got T
+	err := kdl.Decode(strings.NewReader(doc), &got)
+	if err != nil {
+		t.Errorf("Decode failed: %+v", err)
+		return
+	}
+
+	want := T{
+		Custom: kdl.Typed[NodeUnmarshaler]{
+			Value:   NodeUnmarshaler{Arg: "hello"},
+			Type:    "node-t",
+			HasType: true,
+		},
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Decode mismatch (-want +got):\n%s", diff)
+	}
+}
+
 type Plus10 int
 
 var _ kdl.ValueUnmarshaler = (*Plus10)(nil)

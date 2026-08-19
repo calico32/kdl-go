@@ -240,6 +240,43 @@ var encoderTests = []struct {
 		`,
 	},
 	{
+		"typed values",
+		struct {
+			Name kdl.Typed[string] `kdl:"name"`
+			Node struct {
+				Arg  kdl.Typed[int]    `kdl:",arg"`
+				Prop kdl.Typed[string] `kdl:"p,prop"`
+			} `kdl:"node"`
+			NoType kdl.Typed[string] `kdl:"no-type"`
+		}{
+			Name: kdl.Typed[string]{Value: "Alice", Type: "person", HasType: true},
+			Node: struct {
+				Arg  kdl.Typed[int]    `kdl:",arg"`
+				Prop kdl.Typed[string] `kdl:"p,prop"`
+			}{
+				Arg:  kdl.Typed[int]{Value: 5, Type: "u8", HasType: true},
+				Prop: kdl.Typed[string]{Value: "x", Type: "str", HasType: true},
+			},
+			// Type set but HasType false; annotation should be ignored and not
+			// emitted
+			NoType: kdl.Typed[string]{Value: "hello", Type: "ignored"},
+		},
+		`
+			name (person)Alice
+			node (u8)5 p=(str)x
+			no-type hello
+		`,
+	},
+	{
+		"omitzero with Typed",
+		struct {
+			Name kdl.Typed[string] `kdl:"name,omitzero"`
+		}{
+			Name: kdl.Typed[string]{Value: "", Type: "person", HasType: true},
+		},
+		``,
+	},
+	{
 		"omitzero with Located",
 		struct {
 			Name kdl.Located[string] `kdl:"name,omitzero"`

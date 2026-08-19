@@ -229,3 +229,28 @@ type locatedType interface {
 var _ locatedType = Located[any]{}
 
 func (Located[T]) locatedType() {}
+
+// Typed[T] is a wrapper type that can be used to unmarshal a T along with its
+// KDL type annotation, if present. When unmarshaling into a Typed[T], the
+// decoder will unmarshal the value into the Value field and set the Type field
+// to the value's KDL type annotation. When marshaling, the Type field is used
+// as the KDL type annotation for the value.
+//
+// The HasType field should be checked before consulting Type, as an empty
+// string is a valid KDL type annotation. HasType is false if there was no type
+// annotation present in the KDL value (or if the value should not include a
+// type annotation when marshaling).
+type Typed[T any] struct {
+	Value   T
+	Type    string
+	HasType bool
+}
+
+// internal interface to detect Typed[T] - cannot reflect type eq generics
+type typedType interface {
+	typedType()
+}
+
+var _ typedType = Typed[any]{}
+
+func (Typed[T]) typedType() {}

@@ -79,6 +79,16 @@ func (d *decoder) unmarshalValue(value Value, tag structTag, target reflect.Valu
 				target.FieldByName("End").Set(reflect.ValueOf(end))
 				return nil
 			}
+			if _, ok := target.Interface().(typedType); ok {
+				inner := target.FieldByName("Value")
+				if err := d.unmarshalValue(value, tag, inner); err != nil {
+					return err
+				}
+				typ, ok := value.TypeAnnotation()
+				target.FieldByName("Type").Set(reflect.ValueOf(typ))
+				target.FieldByName("HasType").SetBool(ok)
+				return nil
+			}
 		}
 		// fallthrough to error - don't know how to unmarshal a struct directly
 	}
