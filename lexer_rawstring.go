@@ -49,7 +49,7 @@ func (l *lexer) readRawString() token {
 			line := l.text(lineStart, l.offset)
 			if isNewline(l.ch) {
 				lines = append(lines, line)
-				l.next()
+				l.readNewline()
 				lineStart = l.offset
 				continue
 			}
