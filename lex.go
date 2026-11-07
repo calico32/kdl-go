@@ -169,7 +169,11 @@ func (l *lexer) lexDefault() token {
 		for isIdentChar(l.ch) {
 			l.next()
 		}
-		return l.tok(tokenSignedIdent, start, l.text(start, l.offset))
+		lit := l.text(start, l.offset)
+		if lit == "-inf" {
+			l.errorf(start, "invalid identifier: %q (prefix with '#' for keyword or quote for string)", lit)
+		}
+		return l.tok(tokenSignedIdent, start, lit)
 
 	}
 
