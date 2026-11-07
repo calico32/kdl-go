@@ -32,39 +32,22 @@ func (l *lexer) readQuotedString() token {
 				l.errorf(start, "unterminated multi-line string")
 				return l.tok(tokenIllegal, start, l.text(start, l.offset))
 			}
-			line := l.text(lineStart, l.offset)
+			// 3.12. Whitespace escapes are resolved before dedentation, and
+			// all other escapes after it.
+			line := removeWhitespaceEscapes(l.text(lineStart, l.offset))
 			if isNewline(l.ch) {
 				lines = append(lines, line)
-				l.next()
+				l.readNewline()
 				lineStart = l.offset
 				continue
 			}
 
-			lines = append(lines, line)
 			// consume closing """
 			l.next() // first "
 			l.next() // second "
 			l.next() // third "
 
-			var content strings.Builder
-			content.Grow(int(l.offset - start))
-			for i, ln := range lines {
-				if i > 0 {
-					content.WriteString("\n")
-				}
-				content.WriteString(ln)
-			}
-			unescaped, err := unescapeString(content.String(), l.version)
-			if err != nil {
-				l.errorf(start, "invalid multi-line string: %s", err)
-				// unescape failed: bail out before we try to walk
-				// unescapedLines, which may be out of sync
-				return l.tok(tokenQuotedMultiLineString, start, "")
-			}
-			content.Reset()
-			unescapedLines := strings.Split(unescaped, "\n")
-
-			prefix := unescapedLines[len(unescapedLines)-1]
+			prefix := line
 			prefixHasNonwhitespace := false
 			for _, ch := range prefix {
 				if !isUnicodeSpace(ch) {
@@ -75,7 +58,9 @@ func (l *lexer) readQuotedString() token {
 			if prefixHasNonwhitespace {
 				l.errorf(lineStart, "only whitespace allowed on final line of multi-line string")
 			}
-			for i, ln := range lines[:len(lines)-1] {
+			var content strings.Builder
+			content.Grow(int(l.offset - start))
+			for i, ln := range lines {
 				hasNonwhitespaceChars := false
 				for _, ch := range ln {
 					if !isUnicodeSpace(ch) {
@@ -90,10 +75,15 @@ func (l *lexer) readQuotedString() token {
 					content.WriteString("\n")
 				}
 				if hasNonwhitespaceChars {
-					content.WriteString(strings.TrimPrefix(unescapedLines[i], prefix))
+					content.WriteString(strings.TrimPrefix(ln, prefix))
 				}
 			}
-			return l.tok(tokenQuotedMultiLineString, start, content.String())
+			unescaped, err := unescapeString(content.String(), l.version)
+			if err != nil {
+				l.errorf(start, "invalid multi-line string: %s", err)
+				return l.tok(tokenQuotedMultiLineString, start, "")
+			}
+			return l.tok(tokenQuotedMultiLineString, start, unescaped)
 		}
 	}
 
@@ -194,4 +184,44 @@ func (l *lexer) readStringChar(multiline bool) (terminal bool) {
 		l.next()
 		return false
 	}
+}
+
+// removeWhitespaceEscapes removes the whitespace escapes from s, along with
+// the whitespace and newlines they escape, and leaves all other escapes as
+// they are.
+func removeWhitespaceEscapes(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var result strings.Builder
+	result.Grow(len(s))
+	escaped := false
+	inWhitespace := false
+	for _, ch := range s {
+		if inWhitespace {
+			if isUnicodeSpace(ch) || isNewline(ch) {
+				continue
+			}
+			inWhitespace = false
+		}
+		if escaped {
+			escaped = false
+			if isUnicodeSpace(ch) || isNewline(ch) {
+				inWhitespace = true
+				continue
+			}
+			result.WriteRune('\\')
+			result.WriteRune(ch)
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		result.WriteRune(ch)
+	}
+	if escaped {
+		result.WriteRune('\\')
+	}
+	return result.String()
 }
